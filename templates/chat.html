@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ServiLeads AI</title>
+  <style>
+    /* ============================================================
+       VARIABLES GLOBALES — edita aquí los colores
+       ============================================================ */
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface2:    #21262d;
+      --border:      #30363d;
+      --text:        #e6edf3;
+      --muted:       #7d8590;
+      --accent:      #58a6ff;
+      --success:     #238636;
+      --danger:      #da3633;
+      --bot-bubble:  #1c2128;
+      --user-bubble: #1a3650;
+      --radius:      14px;
+      --console-bg:  #010409;
+      --console-fg:  #7ee787;
+    }
+
+    /* ---- Reset ---- */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ============================================================
+       HEADER
+       ============================================================ */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .bot-avatar {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #1f6feb, #58a6ff);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .header-info h1 { font-size: 1rem; font-weight: 600; }
+    .header-info p  { font-size: 0.75rem; color: var(--muted); }
+    .online-dot {
+      width: 8px; height: 8px;
+      background: #3fb950;
+      border-radius: 50%;
+      margin-left: auto;
+      animation: pulse-green 2s infinite;
+    }
+    @keyframes pulse-green {
+      0%,100%{ box-shadow: 0 0 0 0 rgba(63,185,80,.4); }
+      50%    { box-shadow: 0 0 0 5px rgba(63,185,80,0); }
+    }
+    .restart-btn {
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); padding: 5px 12px;
+      border-radius: 6px; cursor: pointer; font-size: 0.75rem;
+      transition: border-color .15s, color .15s;
+    }
+    .restart-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ============================================================
+       CHAT AREA
+       ============================================================ */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #chat::-webkit-scrollbar { width: 4px; }
+    #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ---- Grupos de mensajes ---- */
+    .msg-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 80%;
+    }
+    .msg-group.bot  { align-self: flex-start; }
+    .msg-group.user { align-self: flex-end; align-items: flex-end; }
+
+    /* ---- Burbujas de texto ---- */
+    .bubble {
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+    .bot  .bubble { background: var(--bot-bubble);  border-bottom-left-radius: 4px; }
+    .user .bubble { background: var(--user-bubble); border-bottom-right-radius: 4px; color: #c9d8f0; }
+
+    /* ---- Quick replies ---- */
+    .quick-replies {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .qr-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 13px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      transition: background .15s, border-color .15s, transform .1s;
+    }
+    .qr-btn:hover { background: var(--surface); border-color: var(--accent); transform: translateY(-1px); }
+    .qr-btn:disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+
+    /* ---- File upload ---- */
+    .upload-area {
+      background: var(--surface2);
+      border: 1.5px dashed var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.83rem;
+    }
+    .upload-area:hover  { border-color: var(--accent); background: #1c2435; }
+    .upload-area .hint  { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .upload-area .icon  { font-size: 22px; flex-shrink: 0; }
+    .upload-area.done   { border-color: var(--success); border-style: solid; }
+    input[type="file"]  { display: none; }
+
+    /* ---- Countries picker ---- */
+    .countries-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      max-width: 420px;
+    }
+    .countries-head {
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .small-link { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 0.72rem; }
+    .small-link:hover { text-decoration: underline; }
+    .countries-body { padding: 10px 14px; max-height: 240px; overflow-y: auto; }
+    .countries-body::-webkit-scrollbar { width: 3px; }
+    .countries-body::-webkit-scrollbar-thumb { background: var(--border); }
+    .region-title {
+      font-size: 0.68rem; font-weight: 700; color: var(--accent);
+      text-transform: uppercase; letter-spacing: .06em;
+      padding: 8px 0 4px; cursor: pointer; user-select: none;
+    }
+    .country-cb { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+    .country-cb:hover { background: var(--surface); }
+    .country-cb input { accent-color: var(--accent); width: 13px; height: 13px; }
+    .countries-footer { padding: 8px 14px; border-top: 1px solid var(--border); }
+    .confirm-countries-btn {
+      width: 100%; padding: 8px; background: var(--accent);
+      border: none; border-radius: 6px; color: #000;
+      font-weight: 600; font-size: 0.82rem; cursor: pointer;
+      transition: background .15s;
+    }
+    .confirm-countries-btn:hover { background: #79b8ff; }
+
+    /* ---- Summary card ---- */
+    .summary-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      min-width: 260px;
+    }
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 14px;
+      font-size: 0.82rem;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-key   { color: var(--muted); flex-shrink: 0; }
+    .summary-value { color: var(--text); text-align: right; }
+    .action-row-btns {
+      display: flex; gap: 8px; padding: 10px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .start-btn {
+      flex: 1; padding: 9px 14px;
+      background: var(--success); border: none; border-radius: 6px;
+      color: #fff; font-weight: 600; font-size: 0.85rem; cursor: pointer;
+      transition: background .15s;
+    }
+    .start-btn:hover { background: #2ea043; }
+    .modify-btn {
+      padding: 9px 14px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--muted); font-size: 0.85rem; cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .modify-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ---- Console bubble ---- */
+    .console-bubble {
+      background: var(--console-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 0.75rem;
+      line-height: 1.6;
+      max-height: 300px;
+      overflow-y: auto;
+      min-width: 320px;
+      max-width: 560px;
+    }
+    .console-bubble::-webkit-scrollbar { width: 3px; }
+    .console-bubble::-webkit-scrollbar-thumb { background: var(--border); }
+    .cl { color: var(--console-fg); }
+    .cl.err  { color: #f85149; }
+    .cl.warn { color: #e3b341; }
+    .cl.info { color: #79c0ff; }
+    .cl.sep  { color: var(--muted); }
+    .console-status {
+      font-size: 0.7rem; color: var(--muted);
+      padding: 4px 0 0;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .spin {
+      display: inline-block;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Download button ---- */
+    .download-btn {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--success); color: #fff;
+      padding: 10px 18px; border-radius: 8px;
+      text-decoration: none; font-weight: 600; font-size: 0.88rem;
+      transition: background .15s;
+    }
+    .download-btn:hover { background: #2ea043; }
+
+    /* ---- Typing indicator ---- */
+    .typing { display: flex; gap: 4px; padding: 12px 16px; align-items: center; }
+    .typing span {
+      width: 7px; height: 7px; background: var(--muted);
+      border-radius: 50%; animation: bounce .9s infinite;
+    }
+    .typing span:nth-child(2) { animation-delay: .15s; }
+    .typing span:nth-child(3) { animation-delay: .30s; }
+    @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-7px)} }
+
+    /* ============================================================
+       INPUT AREA
+       ============================================================ */
+    .input-area {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #user-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 10px 16px;
+      color: var(--text);
+      font-size: 0.88rem;
+      outline: none;
+      resize: none;
+      max-height: 120px;
+      transition: border-color .15s;
+    }
+    #user-input:focus { border-color: var(--accent); }
+    #user-input::placeholder { color: var(--muted); }
+    .send-btn {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--accent); border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0;
+      transition: background .15s, transform .1s;
+    }
+    .send-btn:hover  { background: #79b8ff; }
+    .send-btn:active { transform: scale(.92); }
+    .send-btn svg { fill: #000; }
+
+    /* ============================================================
+       MARKDOWN mínimo (bold)
+       ============================================================ */
+    strong { font-weight: 600; color: #c9d1d9; }
+    em     { font-style: italic; color: var(--muted); }
+
+    /* ============================================================
+       RESPONSIVE
+       ============================================================ */
+    @media (max-width: 600px) {
+      .msg-group { max-width: 94%; }
+      .console-bubble { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header>
+  <div class="bot-avatar">🤖</div>
+  <div class="header-info">
+    <h1>ServiLeads AI</h1>
+    <p>Asistente de extracción de datos</p>
+  </div>
+  <div class="online-dot" title="En línea"></div>
+  <button class="restart-btn" onclick="sendAction('RESTART_GLOBAL')">↩ Reiniciar</button>
+</header>
+
+<!-- ===== CHAT ===== -->
+<div id="chat"></div>
+
+<!-- ===== INPUT ===== -->
+<div class="input-area">
+  <textarea id="user-input" rows="1" placeholder="Escribe tu mensaje..." onkeydown="onKey(event)" oninput="autoResize(this)"></textarea>
+  <button class="send-btn" onclick="sendText()" title="Enviar">
+    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M2 21 23 12 2 3v7l15 2-15 2z"/></svg>
+  </button>
+</div>
+
+<!-- ===== JAVASCRIPT ===== -->
+<script>
+/* -------- Estado del cliente -------- */
+let SID = localStorage.getItem('servi_sid') || null;
+let currentJobId = null;
+let eventSource   = null;
+let activeConsole = null;  // referencia al div de la consola activa
+let inputsDisabled = false;
+
+/* -------- Inicializar -------- */
+document.addEventListener('DOMContentLoaded', () => {
+  if (!SID) {
+    // Generar un SID de cliente
+    SID = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    localStorage.setItem('servi_sid', SID);
+  }
+  // Enviar turno vacío para obtener el saludo inicial
+  sendTurn({ type: 'init' });
+});
+
+/* -------- Markdown mínimo -------- */
+function renderMD(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+/* -------- Scroll al final -------- */
+function scrollBottom() {
+  const chat = document.getElementById('chat');
+  chat.scrollTop = chat.scrollHeight;
+}
+
+/* -------- Auto-resize del textarea -------- */
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+/* -------- Enviar mensaje de texto -------- */
+function sendText() {
+  const inp = document.getElementById('user-input');
+  const text = inp.value.trim();
+  if (!text || inputsDisabled) return;
+  inp.value = '';
+  inp.style.height = 'auto';
+  addUserBubble(text);
+  sendTurn({ type: 'text', value: text });
+}
+
+function onKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+}
+
+/* -------- Enviar acción (botón) -------- */
+function sendAction(value, label) {
+  if (value === 'RESTART_GLOBAL') {
+    SID = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    localStorage.setItem('servi_sid', SID);
+    currentJobId = null;
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    document.getElementById('chat').innerHTML = '';
+    sendTurn({ type: 'init' });
+    return;
+  }
+  if (label) addUserBubble(label);
+  sendTurn({ type: 'action', value });
+}
+
+/* -------- Confirmar países -------- */
+function confirmCountries(cardEl) {
+  const checked = cardEl.querySelectorAll('input[name="country"]:checked');
+  if (checked.length === 0) { alert('Selecciona al menos un país.'); return; }
+  const paises = [];
+  const names  = [];
+  checked.forEach(cb => { paises.push(cb.value); names.push(cb.dataset.name); });
+  addUserBubble('🌎 ' + names.slice(0, 4).join(', ') + (names.length > 4 ? ` +${names.length - 4} más` : ''));
+  // Deshabilitar el picker
+  cardEl.querySelectorAll('input, button').forEach(el => el.disabled = true);
+  cardEl.style.opacity = '.6';
+  sendTurn({ type: 'countries', paises, names });
+}
+
+/* -------- Upload de archivo -------- */
+function triggerUpload(field, areaEl) {
+  const inp = document.getElementById(`file_${field}`);
+  inp.onchange = async () => {
+    const file = inp.files[0];
+    if (!file) return;
+    // Mostrar "subiendo..."
+    areaEl.innerHTML = `<span class="icon">⏳</span><div><div>Subiendo <strong>${file.name}</strong>...</div></div>`;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch(`/api/upload/${SID}/${field}`, { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.error) {
+        areaEl.innerHTML = `<span class="icon">❌</span><div><div>${json.error}</div></div>`;
+        return;
+      }
+      areaEl.classList.add('done');
+      areaEl.innerHTML = `<span class="icon">✅</span><div><div><strong>${file.name}</strong> cargado.</div></div>`;
+      areaEl.style.cursor = 'default';
+      addUserBubble(`📎 ${file.name}`);
+      renderMessages(json.messages);
+    } catch(e) {
+      areaEl.innerHTML = `<span class="icon">❌</span><div><div>Error al subir. Intenta de nuevo.</div></div>`;
+    }
+  };
+  inp.click();
+}
+
+/* -------- Llamada al backend -------- */
+async function sendTurn(payload) {
+  payload.sid = SID;
+  showTyping();
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Id': SID },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (json.sid) SID = json.sid;
+    hideTyping();
+    renderMessages(json.messages || []);
+  } catch(e) {
+    hideTyping();
+    appendBotBubbles([{ type: 'text', content: '❌ Error de conexión con el servidor. Recarga la página.' }]);
+  }
+}
+
+/* -------- Burbuja de usuario -------- */
+function addUserBubble(text) {
+  const chat = document.getElementById('chat');
+  const g = document.createElement('div');
+  g.className = 'msg-group user';
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  b.textContent = text;
+  g.appendChild(b);
+  chat.appendChild(g);
+  scrollBottom();
+}
+
+/* -------- Typing indicator -------- */
+let typingEl = null;
+function showTyping() {
+  if (typingEl) return;
+  typingEl = document.createElement('div');
+  typingEl.className = 'msg-group bot';
+  typingEl.innerHTML = '<div class="bubble typing"><span></span><span></span><span></span></div>';
+  document.getElementById('chat').appendChild(typingEl);
+  scrollBottom();
+}
+function hideTyping() {
+  if (typingEl) { typingEl.remove(); typingEl = null; }
+}
+
+/* ============================================================
+   RENDERIZAR MENSAJES DEL AGENTE
+   ============================================================ */
+function renderMessages(messages) {
+  const group = document.createElement('div');
+  group.className = 'msg-group bot';
+  messages.forEach(msg => {
+    const el = renderMessage(msg);
+    if (el) group.appendChild(el);
+  });
+  document.getElementById('chat').appendChild(group);
+  scrollBottom();
+}
+
+function renderMessage(msg) {
+  switch (msg.type) {
+
+    /* ---- Texto ---- */
+    case 'text': {
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      b.innerHTML = renderMD(msg.content);
+      return b;
+    }
+
+    /* ---- Quick replies ---- */
+    case 'quick_replies': {
+      const wrap = document.createElement('div');
+      wrap.className = 'quick-replies';
+      msg.items.forEach(item => {
+        const btn = document.createElement('button');
+        btn.className = 'qr-btn';
+        btn.textContent = item.label;
+        btn.onclick = () => {
+          // Deshabilitar todos los botones del grupo
+          wrap.querySelectorAll('.qr-btn').forEach(b => b.disabled = true);
+          wrap.style.opacity = '.5';
+          sendAction(item.value, item.label);
+        };
+        wrap.appendChild(btn);
+      });
+      return wrap;
+    }
+
+    /* ---- Upload de archivo ---- */
+    case 'file_upload': {
+      const field = msg.field;
+      const wrap  = document.createElement('div');
+
+      // Input oculto
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.csv'; inp.id = `file_${field}`;
+      wrap.appendChild(inp);
+
+      // Área clickeable
+      const area = document.createElement('div');
+      area.className = 'upload-area';
+      area.innerHTML = `
+        <span class="icon">📎</span>
+        <div>
+          <div>${msg.label}</div>
+          ${msg.hint ? `<div class="hint">${msg.hint}</div>` : ''}
+        </div>`;
+      area.onclick = () => triggerUpload(field, area);
+      wrap.appendChild(area);
+      return wrap;
+    }
+
+    /* ---- Selector de países ---- */
+    case 'countries_picker': {
+      const card = document.createElement('div');
+      card.className = 'countries-card';
+
+      // Header
+      const head = document.createElement('div');
+      head.className = 'countries-head';
+      head.innerHTML = `Seleccionar países
+        <button class="small-link" onclick="selectAllInCard(this.closest('.countries-card'), true)">Todos</button>
+        <button class="small-link" onclick="selectAllInCard(this.closest('.countries-card'), false)">Ninguno</button>`;
+      card.appendChild(head);
+
+      // Body
+      const body = document.createElement('div');
+      body.className = 'countries-body';
+
+      Object.entries(msg.paises).forEach(([region, paisesDict]) => {
+        const regionEl = document.createElement('div');
+        regionEl.className = 'region-title';
+        regionEl.textContent = region;
+        body.appendChild(regionEl);
+
+        Object.entries(paisesDict).forEach(([nameEs, nameEn]) => {
+          const label = document.createElement('label');
+          label.className = 'country-cb';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox'; cb.name = 'country';
+          cb.value = nameEn; cb.dataset.name = nameEs;
+          label.appendChild(cb);
+          label.appendChild(document.createTextNode(nameEs));
+          body.appendChild(label);
+        });
+      });
+      card.appendChild(body);
+
+      // Footer
+      const footer = document.createElement('div');
+      footer.className = 'countries-footer';
+      const btn = document.createElement('button');
+      btn.className = 'confirm-countries-btn';
+      btn.textContent = '✓ Confirmar selección';
+      btn.onclick = () => confirmCountries(card);
+      footer.appendChild(btn);
+      card.appendChild(footer);
+      return card;
+    }
+
+    /* ---- Resumen ---- */
+    case 'summary': {
+      const card = document.createElement('div');
+      card.className = 'summary-card';
+
+      msg.items.forEach(([key, val]) => {
+        const row = document.createElement('div');
+        row.className = 'summary-row';
+        row.innerHTML = `<span class="summary-key">${key}</span><span class="summary-value">${val}</span>`;
+        card.appendChild(row);
+      });
+
+      const btns = document.createElement('div');
+      btns.className = 'action-row-btns';
+
+      const startBtn = document.createElement('button');
+      startBtn.className = 'start-btn';
+      startBtn.textContent = '🚀 Iniciar búsqueda';
+      startBtn.onclick = () => {
+        btns.querySelectorAll('button').forEach(b => b.disabled = true);
+        card.style.opacity = '.7';
+        addUserBubble('🚀 Iniciar búsqueda');
+        sendAction('START');
+      };
+
+      const modBtn = document.createElement('button');
+      modBtn.className = 'modify-btn';
+      modBtn.textContent = '↩ Modificar';
+      modBtn.onclick = () => {
+        btns.querySelectorAll('button').forEach(b => b.disabled = true);
+        card.style.opacity = '.7';
+        addUserBubble('↩ Reiniciar');
+        sendAction('RESTART');
+      };
+
+      btns.appendChild(startBtn);
+      btns.appendChild(modBtn);
+      card.appendChild(btns);
+      return card;
+    }
+
+    /* ---- Stream de logs ---- */
+    case 'stream_start': {
+      const wrap = document.createElement('div');
+
+      const cons = document.createElement('div');
+      cons.className = 'console-bubble';
+      activeConsole = cons;
+
+      const status = document.createElement('div');
+      status.className = 'console-status';
+      status.innerHTML = '<span class="spin">⚙</span> Ejecutando proceso...';
+
+      wrap.appendChild(cons);
+      wrap.appendChild(status);
+
+      // Abrir SSE
+      currentJobId = msg.job_id;
+      if (eventSource) { eventSource.close(); }
+      eventSource = new EventSource(`/api/stream/${msg.job_id}`);
+
+      eventSource.onmessage = (e) => {
+        if (e.data === '__DONE__') {
+          eventSource.close(); eventSource = null;
+          status.innerHTML = '✅ Proceso finalizado.';
+          // Agregar botón de descarga como nuevo grupo
+          const dg = document.createElement('div');
+          dg.className = 'msg-group bot';
+          const dlWrap = document.createElement('div');
+          dlWrap.innerHTML = renderMD('✅ **¡Búsqueda completada!** Haz clic para descargar el archivo CSV con los resultados.');
+          dlWrap.className = 'bubble';
+          const dlBtn = document.createElement('a');
+          dlBtn.className = 'download-btn';
+          dlBtn.href = `/api/download/${currentJobId}`;
+          dlBtn.download = '';
+          dlBtn.textContent = '⬇ Descargar resultado CSV';
+          const restartNote = document.createElement('div');
+          restartNote.className = 'bubble';
+          restartNote.innerHTML = renderMD('¿Deseas hacer otra búsqueda? Haz clic en **↩ Reiniciar** en la parte superior.');
+          dg.appendChild(dlWrap);
+          dg.appendChild(dlBtn);
+          dg.appendChild(restartNote);
+          document.getElementById('chat').appendChild(dg);
+          scrollBottom();
+        } else if (e.data !== '__PING__') {
+          const raw = e.data.replace(/\\n/g, '\n');
+          raw.split('\n').forEach(line => {
+            if (!line.trim()) return;
+            const d = document.createElement('div');
+            d.className = 'cl';
+            if (line.includes('❌') || line.toUpperCase().includes('ERROR')) d.classList.add('err');
+            else if (line.includes('⚠'))  d.classList.add('warn');
+            else if (line.startsWith('===') || line.startsWith('---')) d.classList.add('sep');
+            else if (line.startsWith('ℹ') || line.startsWith('📊') || line.startsWith('⏱')) d.classList.add('info');
+            d.textContent = line;
+            cons.appendChild(d);
+          });
+          cons.scrollTop = cons.scrollHeight;
+        }
+      };
+
+      eventSource.onerror = () => {
+        eventSource.close(); eventSource = null;
+        status.innerHTML = '❌ Se perdió la conexión con el servidor.';
+      };
+
+      return wrap;
+    }
+
+    default:
+      return null;
+  }
+}
+
+/* ---- Utilidades ---- */
+function appendBotBubbles(messages) {
+  renderMessages(messages);
+}
+
+function selectAllInCard(card, checked) {
+  card.querySelectorAll('input[name="country"]').forEach(cb => cb.checked = checked);
+}
+</script>
+
+</body>
+</html>
