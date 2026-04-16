@@ -19,6 +19,12 @@ from flask import (
 
 import apollo_script, lusha_script, apollo_org, lusha_org
 
+try:
+    import shapefile as pyshp
+    _SHP_OK = True
+except ImportError:
+    _SHP_OK = False
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "servi-leads-ai-2024")
 
@@ -130,6 +136,28 @@ PAISES_MAPEO = {
         "Islas Turcas y Caicos": "Turks and Caicos Islands",
     },
 }
+
+
+# ================================================================
+# SHAPEFILE → GEOJSON (cargado al inicio)
+# ================================================================
+def _load_geojson() -> dict:
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "puntos_empresas", "demo_info")
+    if not _SHP_OK:
+        return {"type": "FeatureCollection", "features": []}
+    sf = pyshp.Reader(path, encoding="latin-1")
+    fields = [f[0] for f in sf.fields[1:]]
+    features = []
+    for shp, rec in zip(sf.shapes(), sf.records()):
+        props = {k: (v.strip() if isinstance(v, str) else v) for k, v in zip(fields, rec)}
+        features.append({"type": "Feature", "geometry": shp.__geo_interface__, "properties": props})
+    return {"type": "FeatureCollection", "features": features}
+
+try:
+    GEOJSON_CACHE = _load_geojson()
+except Exception as _e:
+    print(f"[shapefile] Error al cargar: {_e}")
+    GEOJSON_CACHE = {"type": "FeatureCollection", "features": []}
 
 
 # ================================================================
@@ -413,7 +441,14 @@ def handle_turn(sid: str, payload: dict) -> list:
             shown = ", ".join(conv.paises_names[:5])
             extra = len(conv.paises_names) - 5
             label = shown + (f" y {extra} más" if extra > 0 else "")
-            return [_text(f"🌎 Países confirmados: **{label}**")] + step_messages(conv)
+            # Emitir acción de mapa: filtra/vuela al país si solo hay uno seleccionado
+            map_action = {
+                "type": "map_action",
+                "action": "filter",
+                "pais": conv.paises[0] if len(conv.paises) == 1 else None,
+                "empresa": None,
+            }
+            return [_text(f"🌎 Países confirmados: **{label}**"), map_action] + step_messages(conv)
         return [_text("Selecciona los países y haz clic en **Confirmar selección**. 👆"), _countries()]
 
     # ---------- CONFIRMAR ----------
@@ -534,7 +569,22 @@ def _launch_job(conv: ConvState) -> dict:
 
 @app.route("/")
 def index():
-    return render_template("chat.html")
+    return render_template("map.html")
+
+
+@app.route("/api/geojson")
+def geojson():
+    """Devuelve todos los puntos del shapefile como GeoJSON."""
+    return jsonify(GEOJSON_CACHE)
+
+
+@app.route("/api/filters")
+def filters():
+    """Devuelve los valores únicos de país y empresa para los filtros del mapa."""
+    feats = GEOJSON_CACHE.get("features", [])
+    paises   = sorted(set(f["properties"]["pais"]    for f in feats if f["properties"].get("pais")))
+    empresas = sorted(set(f["properties"]["empresa"] for f in feats if f["properties"].get("empresa")))
+    return jsonify({"paises": paises, "empresas": empresas})
 
 
 @app.route("/api/chat", methods=["POST"])

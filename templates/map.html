@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ServiLeads AI — Mapa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <style>
+  /* ============================================================
+     VARIABLES — dark/light se cambia con body.light
+     ============================================================ */
+  :root {
+    --bg:        #0d1117;
+    --surface:   rgba(13,17,23,.82);
+    --surface2:  rgba(22,27,34,.9);
+    --border:    rgba(255,255,255,.1);
+    --text:      #e6edf3;
+    --muted:     #7d8590;
+    --accent:    #58a6ff;
+    --success:   #3fb950;
+    --danger:    #f85149;
+    --radius:    16px;
+    --blur:      blur(18px) saturate(160%);
+    /* chat */
+    --bot-bub:   rgba(28,33,40,.95);
+    --user-bub:  rgba(26,54,80,.95);
+    --console-bg:#010409;
+    --console-fg:#7ee787;
+    /* transition on theme change */
+    transition: background .4s ease, color .3s ease;
+  }
+  body.light {
+    --bg:        #f0f4f8;
+    --surface:   rgba(255,255,255,.82);
+    --surface2:  rgba(240,244,248,.95);
+    --border:    rgba(0,0,0,.1);
+    --text:      #1c2128;
+    --muted:     #57606a;
+    --bot-bub:   rgba(230,235,240,.95);
+    --user-bub:  rgba(210,228,249,.95);
+    --console-bg:#f6f8fa;
+    --console-fg:#116329;
+  }
+
+  /* ---- Base ---- */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text);
+    overflow: hidden;
+    height: 100dvh;
+    transition: color .35s;
+  }
+
+  /* ============================================================
+     MAPA (fondo completo)
+     ============================================================ */
+  #map {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    transition: opacity .4s;
+  }
+
+  /* ============================================================
+     PANEL DE VIDRIO (glass morphism base)
+     ============================================================ */
+  .glass {
+    background: var(--surface);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: background .4s, border-color .4s;
+  }
+
+  /* ============================================================
+     PANEL DE CONFIGURACIÓN (izquierda)
+     ============================================================ */
+  #cfg {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 100;
+    width: 270px;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    transition: transform .35s cubic-bezier(.4,0,.2,1), opacity .35s;
+  }
+  #cfg::-webkit-scrollbar { width: 3px; }
+  #cfg::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  #cfg.hidden {
+    transform: translateX(-300px);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Brand */
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand-icon {
+    width: 38px; height: 38px;
+    background: linear-gradient(135deg, #1f6feb, #58a6ff);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(88,166,255,.35);
+  }
+  .brand-text h2 { font-size: .95rem; font-weight: 700; }
+  .brand-text p  { font-size: .68rem; color: var(--muted); margin-top: 1px; }
+
+  /* Sección */
+  .cfg-section { display: flex; flex-direction: column; gap: 8px; }
+  .cfg-label {
+    font-size: .68rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  /* Toggle tema */
+  .theme-row {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .theme-label { font-size: .82rem; font-weight: 500; }
+  .toggle-track {
+    width: 50px; height: 26px;
+    background: var(--muted);
+    border-radius: 13px;
+    position: relative;
+    cursor: pointer;
+    transition: background .3s;
+    flex-shrink: 0;
+  }
+  .toggle-track.on { background: var(--accent); }
+  .toggle-thumb {
+    position: absolute;
+    width: 20px; height: 20px;
+    background: #fff;
+    border-radius: 50%;
+    top: 3px; left: 3px;
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  }
+  .toggle-track.on .toggle-thumb { transform: translateX(24px); }
+
+  /* Satélites */
+  .sat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .sat-btn {
+    padding: 9px 6px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: .75rem;
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: border-color .2s, transform .15s, box-shadow .2s, background .3s;
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .sat-btn .sat-icon { font-size: 20px; }
+  .sat-btn:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(88,166,255,.2);
+  }
+  .sat-btn.active {
+    border-color: var(--accent);
+    background: rgba(88,166,255,.15);
+    box-shadow: 0 0 0 2px rgba(88,166,255,.3);
+  }
+  /* 5to botón centrado */
+  .sat-btn.full { grid-column: span 2; }
+
+  /* Filtros (chips de países) */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .chip {
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1.5px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: .75rem;
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: border-color .2s, background .2s, transform .15s, box-shadow .2s;
+    white-space: nowrap;
+  }
+  .chip:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(88,166,255,.15);
+  }
+  .chip.active {
+    border-color: var(--accent);
+    background: rgba(88,166,255,.18);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Selector empresa */
+  .styled-select {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: .8rem;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    cursor: pointer;
+    transition: border-color .2s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='%237d8590'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+  .styled-select:focus { border-color: var(--accent); }
+  .styled-select option { background: #161b22; color: #e6edf3; }
+
+  /* Botón limpiar filtros */
+  .clear-btn {
+    width: 100%;
+    padding: 9px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+    font-size: .78rem;
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: border-color .2s, color .2s, background .2s, transform .15s;
+  }
+  .clear-btn:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: rgba(248,81,73,.07);
+    transform: translateY(-1px);
+  }
+
+  /* ============================================================
+     TOGGLE PANEL (botón flotante top-left cuando panel oculto)
+     ============================================================ */
+  #cfg-toggle {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 101;
+    width: 42px; height: 42px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    backdrop-filter: var(--blur);
+    color: var(--text);
+    font-size: 18px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .2s, background .4s, transform .15s;
+  }
+  #cfg-toggle:hover { border-color: var(--accent); transform: scale(1.05); }
+  #cfg.hidden ~ #cfg-toggle,
+  #cfg-toggle.show { display: flex; }
+
+  /* ============================================================
+     PANEL DE CHAT (derecha)
+     ============================================================ */
+  #chat-panel {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    bottom: 16px;
+    z-index: 100;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform .35s cubic-bezier(.4,0,.2,1), background .4s;
+  }
+
+  /* Header del chat */
+  .chat-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chat-avatar {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #1f6feb, #58a6ff);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .chat-header-info h3 { font-size: .85rem; font-weight: 600; }
+  .chat-header-info p  { font-size: .68rem; color: var(--muted); }
+  .online-dot {
+    width: 7px; height: 7px;
+    background: var(--success);
+    border-radius: 50%;
+    margin-left: auto;
+    flex-shrink: 0;
+    animation: pulse-green 2s infinite;
+  }
+  @keyframes pulse-green {
+    0%,100%{ box-shadow: 0 0 0 0 rgba(63,185,80,.4); }
+    50%    { box-shadow: 0 0 0 5px rgba(63,185,80,0); }
+  }
+  .restart-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: .7rem;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+  }
+  .restart-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Mensajes del chat */
+  #chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #chat-messages::-webkit-scrollbar { width: 3px; }
+  #chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Grupos bot/user */
+  .msg-group { display: flex; flex-direction: column; gap: 5px; max-width: 88%; }
+  .msg-group.bot  { align-self: flex-start; }
+  .msg-group.user { align-self: flex-end; align-items: flex-end; }
+
+  /* Burbujas */
+  .bubble {
+    padding: 9px 13px;
+    border-radius: 14px;
+    font-size: .81rem;
+    line-height: 1.55;
+    word-break: break-word;
+    transition: background .4s;
+  }
+  .bot  .bubble { background: var(--bot-bub);  border-bottom-left-radius: 4px; }
+  .user .bubble { background: var(--user-bub); border-bottom-right-radius: 4px; color: #c9d8f0; }
+
+  /* Quick replies */
+  .quick-replies { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
+  .qr-btn {
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: .76rem;
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
+    transition: border-color .2s, transform .15s, box-shadow .2s, background .3s;
+  }
+  .qr-btn:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(88,166,255,.15); }
+  .qr-btn:disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+
+  /* Upload */
+  .upload-area {
+    background: var(--surface2);
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 11px 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: .78rem;
+    transition: border-color .2s, background .3s, transform .15s;
+  }
+  .upload-area:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .upload-area.done { border-style: solid; border-color: var(--success); }
+  .upload-area .uicon { font-size: 20px; flex-shrink: 0; }
+  .upload-hint { font-size: .68rem; color: var(--muted); margin-top: 2px; }
+  input[type="file"] { display: none; }
+
+  /* Countries picker */
+  .cp-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: background .4s;
+  }
+  .cp-head {
+    padding: 8px 12px;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 6px; align-items: center;
+  }
+  .sml { background: none; border: none; color: var(--accent); cursor: pointer; font-size: .68rem; font-family: 'Inter', sans-serif; }
+  .sml:hover { text-decoration: underline; }
+  .cp-body { padding: 8px 12px; max-height: 200px; overflow-y: auto; }
+  .cp-body::-webkit-scrollbar { width: 3px; }
+  .cp-body::-webkit-scrollbar-thumb { background: var(--border); }
+  .rgn-ttl {
+    font-size: .65rem; font-weight: 700; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .06em;
+    padding: 6px 0 3px; user-select: none;
+  }
+  .cb-row { display: flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: 4px; cursor: pointer; font-size: .77rem; }
+  .cb-row:hover { background: rgba(88,166,255,.08); }
+  .cb-row input { accent-color: var(--accent); width: 12px; height: 12px; }
+  .cp-foot { padding: 7px 12px; border-top: 1px solid var(--border); }
+  .confirm-btn {
+    width: 100%; padding: 7px;
+    background: var(--accent); border: none; border-radius: 7px;
+    color: #000; font-weight: 600; font-size: .78rem;
+    font-family: 'Inter', sans-serif; cursor: pointer;
+    transition: background .2s, transform .15s;
+  }
+  .confirm-btn:hover { background: #79b8ff; transform: translateY(-1px); }
+
+  /* Summary */
+  .sum-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    min-width: 220px;
+    transition: background .4s;
+  }
+  .sum-row {
+    display: flex; justify-content: space-between;
+    padding: 7px 12px; font-size: .78rem;
+    border-bottom: 1px solid var(--border); gap: 10px;
+  }
+  .sum-row:last-child { border-bottom: none; }
+  .sum-k { color: var(--muted); flex-shrink: 0; }
+  .sum-v { color: var(--text); text-align: right; }
+  .act-row { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border); }
+  .start-btn {
+    flex: 1; padding: 8px;
+    background: var(--success); border: none; border-radius: 8px;
+    color: #fff; font-weight: 600; font-size: .8rem;
+    font-family: 'Inter', sans-serif; cursor: pointer;
+    transition: background .2s, transform .15s, box-shadow .2s;
+  }
+  .start-btn:hover { background: #2ea043; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(63,185,80,.3); }
+  .start-btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+  .mod-btn {
+    padding: 8px 12px;
+    background: transparent; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--muted); font-size: .8rem;
+    font-family: 'Inter', sans-serif; cursor: pointer;
+    transition: border-color .2s, color .2s, transform .15s;
+  }
+  .mod-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+
+  /* Consola */
+  .console-bub {
+    background: var(--console-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 11px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: .72rem;
+    line-height: 1.6;
+    max-height: 240px;
+    overflow-y: auto;
+    min-width: 260px;
+    transition: background .4s;
+  }
+  .console-bub::-webkit-scrollbar { width: 2px; }
+  .console-bub::-webkit-scrollbar-thumb { background: var(--border); }
+  .cl { color: var(--console-fg); }
+  .cl.err  { color: #f85149; }
+  .cl.warn { color: #e3b341; }
+  .cl.info { color: #79c0ff; }
+  .cl.sep  { color: var(--muted); }
+  .console-status { font-size: .68rem; color: var(--muted); padding: 3px 0 0; display: flex; align-items: center; gap: 4px; }
+  .spin { animation: spin .8s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Download */
+  .dl-btn {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--success); color: #fff;
+    padding: 9px 14px; border-radius: 9px;
+    text-decoration: none; font-weight: 600; font-size: .82rem;
+    transition: background .2s, transform .15s, box-shadow .2s;
+  }
+  .dl-btn:hover { background: #2ea043; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(63,185,80,.3); }
+
+  /* Typing */
+  .typing-wrap { display: flex; gap: 4px; padding: 10px 13px; align-items: center; }
+  .typing-wrap span {
+    width: 6px; height: 6px; background: var(--muted);
+    border-radius: 50%; animation: bounce .9s infinite;
+  }
+  .typing-wrap span:nth-child(2) { animation-delay: .15s; }
+  .typing-wrap span:nth-child(3) { animation-delay: .3s; }
+  @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-6px)} }
+
+  /* Input área */
+  .chat-input-area {
+    border-top: 1px solid var(--border);
+    padding: 10px 12px;
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  #user-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 14px;
+    color: var(--text);
+    font-size: .82rem;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    resize: none;
+    max-height: 100px;
+    transition: border-color .2s, background .4s;
+  }
+  #user-input:focus { border-color: var(--accent); }
+  #user-input::placeholder { color: var(--muted); }
+  .send-btn {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--accent); border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+    transition: background .2s, transform .15s;
+  }
+  .send-btn:hover { background: #79b8ff; }
+  .send-btn:active { transform: scale(.92); }
+  .send-btn svg { fill: #000; }
+
+  /* ============================================================
+     TOAST "Sin registros"
+     ============================================================ */
+  #toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    z-index: 200;
+    background: rgba(248,81,73,.15);
+    border: 1px solid var(--danger);
+    backdrop-filter: var(--blur);
+    color: var(--danger);
+    padding: 10px 20px;
+    border-radius: 30px;
+    font-size: .82rem;
+    font-weight: 600;
+    pointer-events: none;
+    transition: transform .35s cubic-bezier(.4,0,.2,1), opacity .35s;
+    opacity: 0;
+  }
+  #toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+
+  /* ============================================================
+     POPUP DEL MAPA (Leaflet)
+     ============================================================ */
+  .leaflet-popup-content-wrapper {
+    background: rgba(13,17,23,.92);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 12px;
+    color: #e6edf3;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    padding: 0;
+  }
+  .leaflet-popup-tip { background: rgba(13,17,23,.92); }
+  .leaflet-popup-content { margin: 0; }
+  .map-popup { padding: 12px 14px; min-width: 220px; max-width: 300px; font-family: 'Inter', sans-serif; }
+  .popup-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+  .popup-empresa { font-size: .78rem; font-weight: 700; color: #58a6ff; line-height: 1.3; }
+  .popup-pais { font-size: .7rem; color: #7d8590; white-space: nowrap; }
+  .popup-nombre { font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
+  .popup-cargo { font-size: .75rem; color: #7d8590; margin-bottom: 8px; }
+  .popup-divider { border: none; border-top: 1px solid rgba(255,255,255,.1); margin: 6px 0; }
+  .popup-field { font-size: .74rem; color: #c9d1d9; margin-bottom: 4px; display: flex; gap: 5px; align-items: flex-start; word-break: break-all; }
+  .popup-field a { color: #58a6ff; text-decoration: none; }
+  .popup-field a:hover { text-decoration: underline; }
+
+  /* ============================================================
+     COUNTER badge en config
+     ============================================================ */
+  #point-count {
+    font-size: .7rem;
+    color: var(--muted);
+    text-align: center;
+    padding: 2px 0;
+  }
+  .count-num { color: var(--accent); font-weight: 700; }
+
+  /* ============================================================
+     RESPONSIVE
+     ============================================================ */
+  @media (max-width: 800px) {
+    #cfg { width: 240px; }
+    #chat-panel { width: 300px; }
+  }
+  @media (max-width: 580px) {
+    #cfg { display: none; }
+    #cfg.show { display: flex; }
+    #cfg-toggle { display: flex; }
+    #chat-panel { width: calc(100vw - 32px); }
+  }
+  </style>
+</head>
+<body>
+
+<!-- ===== MAPA (fullscreen background) ===== -->
+<div id="map"></div>
+
+<!-- ===== PANEL CONFIG (izquierda) ===== -->
+<aside id="cfg" class="glass">
+
+  <!-- Brand -->
+  <div class="brand">
+    <div class="brand-icon">🤖</div>
+    <div class="brand-text">
+      <h2>ServiLeads AI</h2>
+      <p>Mapa de empresas</p>
+    </div>
+  </div>
+
+  <!-- Tema -->
+  <div class="cfg-section">
+    <div class="cfg-label">🎨 Tema</div>
+    <div class="theme-row">
+      <span class="theme-label" id="theme-label">Oscuro</span>
+      <div class="toggle-track" id="theme-toggle" onclick="toggleTheme()">
+        <div class="toggle-thumb"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Satélites -->
+  <div class="cfg-section">
+    <div class="cfg-label">🛰️ Vista del mapa</div>
+    <div class="sat-grid" id="sat-grid">
+      <!-- generado por JS -->
+    </div>
+  </div>
+
+  <!-- Filtro por país -->
+  <div class="cfg-section">
+    <div class="cfg-label">🌍 Filtrar por país</div>
+    <div class="chips" id="country-chips">
+      <!-- generado por JS -->
+    </div>
+  </div>
+
+  <!-- Filtro por empresa -->
+  <div class="cfg-section">
+    <div class="cfg-label">🏢 Filtrar por empresa</div>
+    <select class="styled-select" id="company-select" onchange="onCompanyChange()">
+      <option value="">— Todas las empresas —</option>
+    </select>
+  </div>
+
+  <!-- Conteo de puntos -->
+  <div id="point-count">Cargando puntos...</div>
+
+  <!-- Limpiar filtros -->
+  <button class="clear-btn" onclick="clearFilters()">✕ Limpiar filtros</button>
+
+</aside>
+
+<!-- Botón para mostrar/ocultar config -->
+<button id="cfg-toggle" onclick="toggleCfg()">☰</button>
+
+<!-- ===== PANEL CHAT (derecha) ===== -->
+<aside id="chat-panel" class="glass">
+  <div class="chat-header">
+    <div class="chat-avatar">🤖</div>
+    <div class="chat-header-info">
+      <h3>Asistente</h3>
+      <p>ServiLeads AI</p>
+    </div>
+    <div class="online-dot"></div>
+    <button class="restart-btn" onclick="doRestart()">↩</button>
+  </div>
+  <div id="chat-messages"></div>
+  <div class="chat-input-area">
+    <textarea id="user-input" rows="1" placeholder="Escribe un mensaje..."
+      onkeydown="onKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="send-btn" onclick="sendText()">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M2 21 23 12 2 3v7l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</aside>
+
+<!-- ===== TOAST ===== -->
+<div id="toast"></div>
+
+<!-- ===== LEAFLET ===== -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+/* ============================================================
+   CONSTANTES
+   ============================================================ */
+const COUNTRY_COLORS = {
+  'Colombia': '#F4D03F',
+  'Peru':     '#E74C3C',
+  'Uruguay':  '#3498DB',
+};
+const COUNTRY_FLAGS = { 'Colombia': '🇨🇴', 'Peru': '🇵🇪', 'Uruguay': '🇺🇾' };
+const COUNTRY_BOUNDS = {
+  'Colombia': [[-4.2, -79.0], [12.5, -66.9]],
+  'Peru':     [[-18.4, -81.3], [-0.04, -68.7]],
+  'Uruguay':  [[-34.95, -58.44], [-30.08, -53.19]],
+};
+
+const TILE_LAYERS = {
+  satellite: {
+    label: 'Satélite', icon: '🛰️',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    opts: { attribution: '© Esri', maxZoom: 19 }
+  },
+  streets: {
+    label: 'Calles', icon: '🗺️',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    opts: { attribution: '© OpenStreetMap', maxZoom: 19 }
+  },
+  dark: {
+    label: 'Oscuro', icon: '🌑',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    opts: { attribution: '© CARTO', maxZoom: 19 }
+  },
+  light: {
+    label: 'Claro', icon: '☀️',
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    opts: { attribution: '© CARTO', maxZoom: 19 }
+  },
+  topo: {
+    label: 'Topográfico', icon: '🏔️',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    opts: { attribution: '© Esri', maxZoom: 19 }
+  },
+};
+
+
+/* ============================================================
+   MAPA — Inicialización
+   ============================================================ */
+const map = L.map('map', { zoomControl: false, attributionControl: true })
+  .setView([-3, -70], 4);
+
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+let currentTile = null;
+let geoLayer    = null;
+let allFeatures = [];
+let activeCountry = '';
+let activeCompany = '';
+let activeSat     = 'dark';
+
+function setLayer(key) {
+  if (currentTile) map.removeLayer(currentTile);
+  const def = TILE_LAYERS[key];
+  currentTile = L.tileLayer(def.url, def.opts).addTo(map);
+  activeSat = key;
+  // Update sat buttons
+  document.querySelectorAll('.sat-btn').forEach(b => b.classList.toggle('active', b.dataset.sat === key));
+}
+setLayer('dark');
+
+
+/* ============================================================
+   SATÉLITES — construir botones dinámicamente
+   ============================================================ */
+(function buildSatGrid() {
+  const grid = document.getElementById('sat-grid');
+  const keys = Object.keys(TILE_LAYERS);
+  keys.forEach((key, i) => {
+    const def = TILE_LAYERS[key];
+    const btn = document.createElement('button');
+    btn.className = 'sat-btn' + (i === keys.length - 1 && keys.length % 2 !== 0 ? ' full' : '');
+    btn.dataset.sat = key;
+    btn.innerHTML = `<span class="sat-icon">${def.icon}</span><span>${def.label}</span>`;
+    btn.onclick = () => setLayer(key);
+    if (key === activeSat) btn.classList.add('active');
+    grid.appendChild(btn);
+  });
+})();
+
+
+/* ============================================================
+   GEOJSON — Cargar puntos del shapefile
+   ============================================================ */
+function buildPopup(p) {
+  const flag  = COUNTRY_FLAGS[p.pais] || '🌍';
+  const phones = (p.telefono || '').split('||').map(s => s.trim()).filter(Boolean);
+  const url   = (p.url || '').trim();
+  const shortUrl = url.includes('linkedin') ? 'Ver LinkedIn' : (url ? 'Ver perfil' : '');
+
+  return `<div class="map-popup">
+    <div class="popup-header">
+      <div class="popup-empresa">${p.empresa || '—'}</div>
+      <div class="popup-pais">${flag} ${p.pais || ''}</div>
+    </div>
+    <div class="popup-nombre">${p.nombre || '—'}</div>
+    <div class="popup-cargo">${p.cargo || ''}</div>
+    <hr class="popup-divider">
+    ${p.correo  ? `<div class="popup-field"><span>📧</span> ${p.correo}</div>` : ''}
+    ${phones.length ? `<div class="popup-field"><span>📞</span> ${phones[0]}</div>` : ''}
+    ${shortUrl && url ? `<div class="popup-field"><span>🔗</span> <a href="${url}" target="_blank" rel="noopener">${shortUrl}</a></div>` : ''}
+  </div>`;
+}
+
+fetch('/api/geojson')
+  .then(r => r.json())
+  .then(data => {
+    allFeatures = data.features || [];
+    renderGeoLayer(allFeatures);
+    updateCount(allFeatures.length, allFeatures.length);
+  })
+  .catch(() => console.warn('No se pudo cargar GeoJSON'));
+
+function renderGeoLayer(features) {
+  if (geoLayer) map.removeLayer(geoLayer);
+  if (!features.length) return;
+
+  geoLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
+    pointToLayer(feature, latlng) {
+      const color = COUNTRY_COLORS[feature.properties.pais] || '#58a6ff';
+      return L.circleMarker(latlng, {
+        radius: 8,
+        fillColor: color,
+        color: '#fff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.88,
+      });
+    },
+    onEachFeature(feature, layer) {
+      layer.bindPopup(buildPopup(feature.properties), { maxWidth: 310 });
+      layer.on('mouseover', function() {
+        this.setStyle({ radius: 13, weight: 3 });
+        this.openPopup();
+      });
+      layer.on('mouseout', function() {
+        this.setStyle({ radius: 8, weight: 2 });
+        this.closePopup();
+      });
+    }
+  }).addTo(map);
+}
+
+
+/* ============================================================
+   FILTROS
+   ============================================================ */
+fetch('/api/filters')
+  .then(r => r.json())
+  .then(({ paises, empresas }) => {
+    buildCountryChips(paises);
+    buildCompanySelect(empresas);
+  });
+
+function buildCountryChips(paises) {
+  const wrap = document.getElementById('country-chips');
+  wrap.innerHTML = '';
+  // "Todos"
+  const all = document.createElement('button');
+  all.className = 'chip active';
+  all.dataset.country = '';
+  all.textContent = '🌍 Todos';
+  all.onclick = () => applyCountryChip('');
+  wrap.appendChild(all);
+  // Por país
+  paises.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.dataset.country = p;
+    btn.textContent = (COUNTRY_FLAGS[p] || '') + ' ' + p;
+    btn.onclick = () => applyCountryChip(p);
+    wrap.appendChild(btn);
+  });
+}
+
+function buildCompanySelect(empresas) {
+  const sel = document.getElementById('company-select');
+  empresas.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e; opt.textContent = e;
+    sel.appendChild(opt);
+  });
+}
+
+function applyCountryChip(pais) {
+  activeCountry = pais;
+  document.querySelectorAll('.chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.country === pais)
+  );
+  applyFilters();
+}
+
+function onCompanyChange() {
+  activeCompany = document.getElementById('company-select').value;
+  applyFilters();
+}
+
+function applyFilters() {
+  const filtered = allFeatures.filter(f => {
+    const p = f.properties;
+    return (!activeCountry || p.pais === activeCountry)
+        && (!activeCompany || p.empresa === activeCompany);
+  });
+
+  renderGeoLayer(filtered);
+  updateCount(filtered.length, allFeatures.length);
+
+  if (filtered.length > 0) {
+    hideToast();
+    const grp = L.featureGroup(
+      filtered.map(f => L.circleMarker([
+        f.geometry.coordinates[1], f.geometry.coordinates[0]
+      ]))
+    );
+    map.fitBounds(grp.getBounds().pad(0.35), { maxZoom: 12 });
+  } else if (activeCountry && COUNTRY_BOUNDS[activeCountry]) {
+    map.fitBounds(COUNTRY_BOUNDS[activeCountry], { animate: true });
+    showToast(`Sin registros — mostrando ${activeCountry}`);
+  } else if (activeCompany) {
+    showToast('Sin registros para esta empresa');
+  }
+}
+
+function clearFilters() {
+  activeCountry = '';
+  activeCompany = '';
+  document.getElementById('company-select').value = '';
+  document.querySelectorAll('.chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.country === '')
+  );
+  renderGeoLayer(allFeatures);
+  updateCount(allFeatures.length, allFeatures.length);
+  map.setView([-3, -70], 4);
+  hideToast();
+}
+
+function updateCount(visible, total) {
+  document.getElementById('point-count').innerHTML =
+    `<span class="count-num">${visible}</span> de ${total} registros`;
+}
+
+
+/* ============================================================
+   TEMA
+   ============================================================ */
+let isDark = true;
+
+function toggleTheme() {
+  isDark = !isDark;
+  document.body.classList.toggle('light', !isDark);
+  document.getElementById('theme-toggle').classList.toggle('on', !isDark);
+  document.getElementById('theme-label').textContent = isDark ? 'Oscuro' : 'Claro';
+  // Cambiar la capa base automáticamente según el tema
+  if (!isDark && (activeSat === 'dark' || activeSat === 'satellite'))  setLayer('light');
+  if ( isDark && (activeSat === 'light'))                               setLayer('dark');
+}
+
+
+/* ============================================================
+   CONFIG PANEL — toggle
+   ============================================================ */
+let cfgHidden = false;
+function toggleCfg() {
+  cfgHidden = !cfgHidden;
+  document.getElementById('cfg').classList.toggle('hidden', cfgHidden);
+  document.getElementById('cfg-toggle').classList.toggle('show', cfgHidden);
+}
+
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 4000);
+}
+function hideToast() {
+  document.getElementById('toast').classList.remove('show');
+}
+
+
+/* ============================================================
+   CHAT ENGINE
+   ============================================================ */
+let SID = localStorage.getItem('servi_sid') || null;
+let currentJobId = null;
+let eventSource   = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!SID) {
+    SID = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+    localStorage.setItem('servi_sid', SID);
+  }
+  sendTurn({ type: 'init' });
+});
+
+/* ---- Markdown mínimo ---- */
+function renderMD(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+function scrollChat() {
+  const el = document.getElementById('chat-messages');
+  el.scrollTop = el.scrollHeight;
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+function sendText() {
+  const inp = document.getElementById('user-input');
+  const txt = inp.value.trim();
+  if (!txt) return;
+  inp.value = ''; inp.style.height = 'auto';
+  addUserBubble(txt);
+  sendTurn({ type: 'text', value: txt });
+}
+
+function onKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+}
+
+function sendAction(value, label) {
+  if (label) addUserBubble(label);
+  sendTurn({ type: 'action', value });
+}
+
+function doRestart() {
+  SID = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+  localStorage.setItem('servi_sid', SID);
+  currentJobId = null;
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  document.getElementById('chat-messages').innerHTML = '';
+  sendTurn({ type: 'init' });
+}
+
+function confirmCountries(cardEl) {
+  const checked = cardEl.querySelectorAll('input[name="country"]:checked');
+  if (!checked.length) { alert('Selecciona al menos un país.'); return; }
+  const paises = [], names = [];
+  checked.forEach(cb => { paises.push(cb.value); names.push(cb.dataset.name); });
+  addUserBubble('🌎 ' + names.slice(0, 4).join(', ') + (names.length > 4 ? ` +${names.length - 4}` : ''));
+  cardEl.querySelectorAll('input, button').forEach(el => el.disabled = true);
+  cardEl.style.opacity = '.55';
+  sendTurn({ type: 'countries', paises, names });
+}
+
+function triggerUpload(field, areaEl) {
+  const inp = document.getElementById(`file_${field}`);
+  inp.onchange = async () => {
+    const file = inp.files[0];
+    if (!file) return;
+    areaEl.innerHTML = `<span class="uicon">⏳</span><div>Subiendo <strong>${file.name}</strong>...</div>`;
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res  = await fetch(`/api/upload/${SID}/${field}`, { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.error) { areaEl.innerHTML = `<span class="uicon">❌</span><div>${json.error}</div>`; return; }
+      areaEl.classList.add('done');
+      areaEl.innerHTML = `<span class="uicon">✅</span><div><strong>${file.name}</strong> cargado.</div>`;
+      areaEl.style.cursor = 'default';
+      addUserBubble(`📎 ${file.name}`);
+      renderMessages(json.messages);
+    } catch(e) {
+      areaEl.innerHTML = `<span class="uicon">❌</span><div>Error al subir. Intenta de nuevo.</div>`;
+    }
+  };
+  inp.click();
+}
+
+async function sendTurn(payload) {
+  payload.sid = SID;
+  showTyping();
+  try {
+    const res  = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Id': SID },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (json.sid) SID = json.sid;
+    hideTyping();
+    renderMessages(json.messages || []);
+  } catch(e) {
+    hideTyping();
+    renderMessages([{ type: 'text', content: '❌ Error de conexión. Recarga la página.' }]);
+  }
+}
+
+function addUserBubble(text) {
+  const chat = document.getElementById('chat-messages');
+  const g = document.createElement('div'); g.className = 'msg-group user';
+  const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
+  g.appendChild(b); chat.appendChild(g); scrollChat();
+}
+
+let typingEl = null;
+function showTyping() {
+  if (typingEl) return;
+  typingEl = document.createElement('div'); typingEl.className = 'msg-group bot';
+  typingEl.innerHTML = '<div class="bubble"><div class="typing-wrap"><span></span><span></span><span></span></div></div>';
+  document.getElementById('chat-messages').appendChild(typingEl); scrollChat();
+}
+function hideTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
+
+/* ---- Renderizar mensajes del agente ---- */
+function renderMessages(messages) {
+  const group = document.createElement('div'); group.className = 'msg-group bot';
+  messages.forEach(msg => {
+    const el = renderMessage(msg);
+    if (el) group.appendChild(el);
+  });
+  document.getElementById('chat-messages').appendChild(group);
+  scrollChat();
+}
+
+function renderMessage(msg) {
+  switch (msg.type) {
+
+    case 'text': {
+      const b = document.createElement('div'); b.className = 'bubble';
+      b.innerHTML = renderMD(msg.content); return b;
+    }
+
+    case 'quick_replies': {
+      const wrap = document.createElement('div'); wrap.className = 'quick-replies';
+      msg.items.forEach(item => {
+        const btn = document.createElement('button'); btn.className = 'qr-btn';
+        btn.textContent = item.label;
+        btn.onclick = () => {
+          wrap.querySelectorAll('.qr-btn').forEach(b => b.disabled = true);
+          wrap.style.opacity = '.5';
+          sendAction(item.value, item.label);
+        };
+        wrap.appendChild(btn);
+      }); return wrap;
+    }
+
+    case 'file_upload': {
+      const field = msg.field;
+      const wrap  = document.createElement('div');
+      const inp   = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.csv'; inp.id = `file_${field}`;
+      wrap.appendChild(inp);
+      const area  = document.createElement('div'); area.className = 'upload-area';
+      area.innerHTML = `<span class="uicon">📎</span><div><div>${msg.label}</div>${msg.hint ? `<div class="upload-hint">${msg.hint}</div>` : ''}</div>`;
+      area.onclick = () => triggerUpload(field, area);
+      wrap.appendChild(area); return wrap;
+    }
+
+    case 'countries_picker': {
+      const card = document.createElement('div'); card.className = 'cp-card';
+      const head = document.createElement('div'); head.className = 'cp-head';
+      head.innerHTML = `Países <button class="sml" onclick="selAll(this.closest('.cp-card'),true)">Todos</button><button class="sml" onclick="selAll(this.closest('.cp-card'),false)">Ninguno</button>`;
+      card.appendChild(head);
+      const body = document.createElement('div'); body.className = 'cp-body';
+      Object.entries(msg.paises).forEach(([region, dict]) => {
+        const rt = document.createElement('div'); rt.className = 'rgn-ttl'; rt.textContent = region;
+        body.appendChild(rt);
+        Object.entries(dict).forEach(([es, en]) => {
+          const lbl = document.createElement('label'); lbl.className = 'cb-row';
+          const cb  = document.createElement('input'); cb.type = 'checkbox'; cb.name = 'country'; cb.value = en; cb.dataset.name = es;
+          lbl.appendChild(cb); lbl.appendChild(document.createTextNode(es)); body.appendChild(lbl);
+        });
+      });
+      card.appendChild(body);
+      const foot = document.createElement('div'); foot.className = 'cp-foot';
+      const btn  = document.createElement('button'); btn.className = 'confirm-btn';
+      btn.textContent = '✓ Confirmar selección';
+      btn.onclick = () => confirmCountries(card);
+      foot.appendChild(btn); card.appendChild(foot); return card;
+    }
+
+    case 'summary': {
+      const card = document.createElement('div'); card.className = 'sum-card';
+      msg.items.forEach(([k, v]) => {
+        const row = document.createElement('div'); row.className = 'sum-row';
+        row.innerHTML = `<span class="sum-k">${k}</span><span class="sum-v">${v}</span>`;
+        card.appendChild(row);
+      });
+      const ar = document.createElement('div'); ar.className = 'act-row';
+      const sb = document.createElement('button'); sb.className = 'start-btn'; sb.textContent = '🚀 Iniciar búsqueda';
+      sb.onclick = () => {
+        ar.querySelectorAll('button').forEach(b => b.disabled = true);
+        card.style.opacity = '.65';
+        addUserBubble('🚀 Iniciar búsqueda');
+        sendAction('START');
+      };
+      const mb = document.createElement('button'); mb.className = 'mod-btn'; mb.textContent = '↩';
+      mb.onclick = () => {
+        ar.querySelectorAll('button').forEach(b => b.disabled = true);
+        addUserBubble('↩ Reiniciar');
+        sendAction('RESTART');
+      };
+      ar.appendChild(sb); ar.appendChild(mb); card.appendChild(ar); return card;
+    }
+
+    case 'stream_start': {
+      const wrap = document.createElement('div');
+      const cons = document.createElement('div'); cons.className = 'console-bub';
+      const stat = document.createElement('div'); stat.className = 'console-status';
+      stat.innerHTML = '<span class="spin">⚙</span> Ejecutando proceso...';
+      wrap.appendChild(cons); wrap.appendChild(stat);
+      currentJobId = msg.job_id;
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(`/api/stream/${msg.job_id}`);
+      eventSource.onmessage = (e) => {
+        if (e.data === '__DONE__') {
+          eventSource.close(); eventSource = null;
+          stat.innerHTML = '✅ Proceso finalizado.';
+          const dg = document.createElement('div'); dg.className = 'msg-group bot';
+          const note = document.createElement('div'); note.className = 'bubble';
+          note.innerHTML = renderMD('✅ **¡Búsqueda completada!**');
+          const dl = document.createElement('a'); dl.className = 'dl-btn';
+          dl.href = `/api/download/${currentJobId}`; dl.download = '';
+          dl.textContent = '⬇ Descargar CSV';
+          dg.appendChild(note); dg.appendChild(dl);
+          document.getElementById('chat-messages').appendChild(dg); scrollChat();
+        } else if (e.data !== '__PING__') {
+          const raw = e.data.replace(/\\n/g, '\n');
+          raw.split('\n').forEach(line => {
+            if (!line.trim()) return;
+            const d = document.createElement('div'); d.className = 'cl';
+            if (line.includes('❌') || line.toUpperCase().includes('ERROR')) d.classList.add('err');
+            else if (line.includes('⚠'))  d.classList.add('warn');
+            else if (line.startsWith('===') || line.startsWith('---')) d.classList.add('sep');
+            else if (line.startsWith('ℹ') || line.startsWith('📊')) d.classList.add('info');
+            d.textContent = line; cons.appendChild(d);
+          });
+          cons.scrollTop = cons.scrollHeight; scrollChat();
+        }
+      };
+      eventSource.onerror = () => {
+        eventSource.close(); eventSource = null;
+        stat.innerHTML = '❌ Se perdió la conexión.';
+      };
+      return wrap;
+    }
+
+    /* ---- Acción de mapa (integración chat ↔ mapa) ---- */
+    case 'map_action': {
+      if (msg.action === 'filter' && msg.pais) {
+        // Actualizar chip del país en el panel config
+        applyCountryChip(msg.pais);
+      }
+      return null; // mensaje invisible
+    }
+
+    default: return null;
+  }
+}
+
+function selAll(card, checked) {
+  card.querySelectorAll('input[name="country"]').forEach(cb => cb.checked = checked);
+}
+</script>
+</body>
+</html>
