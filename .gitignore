@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build / distribución desktop
+build/
+dist/
+*.spec
+
+# Resultados generados (no subir CSVs de output)
+Resultados/
+
+# Entornos virtuales
+venv/
+.env
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Archivos temporales
+*.tmp
+*.log

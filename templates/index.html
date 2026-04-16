@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Extractor de Datos v3.8</title>
+  <style>
+    /* ============================================================
+       CSS VARIABLES — cambia aquí los colores globales de la app
+       ============================================================ */
+    :root {
+      --bg:          #0d1117;
+      --card:        #161b22;
+      --card2:       #21262d;
+      --border:      #30363d;
+      --text:        #e6edf3;
+      --muted:       #7d8590;
+      --accent:      #58a6ff;
+      --success:     #238636;
+      --danger:      #da3633;
+      --radius:      8px;
+      --console-bg:  #010409;
+      --console-fg:  #7ee787;
+    }
+
+    /* ---- Reset básico ---- */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ---- Header ---- */
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 1.05rem; font-weight: 600; }
+    .badge {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card2);
+      color: var(--muted);
+    }
+
+    /* ---- Main layout ---- */
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* ---- Cards ---- */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ---- API Keys ---- */
+    .api-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .api-group label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+    .api-wrap { position: relative; }
+    .api-wrap input {
+      width: 100%;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 36px 8px 10px;
+      color: var(--text);
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .api-wrap input:focus { border-color: var(--accent); }
+    .eye-btn {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px;
+    }
+
+    /* ---- Middle: países + archivos ---- */
+    .middle-grid {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 14px;
+    }
+
+    /* ---- Países ---- */
+    .countries-scroll {
+      max-height: 310px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .countries-scroll::-webkit-scrollbar { width: 3px; }
+    .countries-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .region-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 2px 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .region-toggle-btn {
+      background: none; border: none; color: var(--muted); cursor: pointer; font-size: 10px;
+    }
+    .country-label {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+    }
+    .country-label:hover { background: var(--card2); }
+    .country-label input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
+
+    .small-btn {
+      background: none; border: none; color: var(--accent); cursor: pointer;
+      font-size: 0.7rem; padding: 0;
+    }
+    .small-btn:hover { text-decoration: underline; }
+
+    /* ---- Archivos ---- */
+    .files-stack { display: flex; flex-direction: column; gap: 12px; }
+    .file-group label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+    .file-row { display: flex; gap: 8px; align-items: center; }
+    .file-display {
+      flex: 1;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: border-color .15s, color .15s;
+    }
+    .file-display.loaded { color: var(--text); border-color: var(--success); }
+    .browse-btn {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      transition: border-color .15s;
+    }
+    .browse-btn:hover { border-color: var(--accent); }
+    input[type="file"] { display: none; }
+
+    /* ---- Botones de acción ---- */
+    .action-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .action-btn {
+      flex: 1;
+      min-width: 150px;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: filter .15s, transform .1s;
+      background: var(--btn-color);
+    }
+    .action-btn:hover:not(:disabled) { filter: brightness(1.35); transform: translateY(-1px); }
+    .action-btn:active:not(:disabled) { transform: translateY(0); }
+    .action-btn:disabled { opacity: .38; cursor: not-allowed; transform: none !important; }
+
+    /* ---- Cancelar ---- */
+    #cancel-btn {
+      width: 100%;
+      padding: 10px;
+      background: #781A07;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    #cancel-btn:hover:not(:disabled) { background: #B32003; }
+    #cancel-btn:disabled { opacity: .38; cursor: not-allowed; }
+
+    /* ---- Consola ---- */
+    .console-header { display: flex; align-items: center; gap: 8px; }
+    #console-output {
+      background: var(--console-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      height: 280px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 0.78rem;
+      line-height: 1.6;
+    }
+    #console-output::-webkit-scrollbar { width: 4px; }
+    #console-output::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .log-line { color: var(--console-fg); }
+    .log-line.err { color: #f85149; }
+    .log-line.warn { color: #e3b341; }
+    .log-line.info { color: #79c0ff; }
+    .log-line.sep { color: var(--muted); }
+
+    /* ---- Status badge ---- */
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+      margin-left: auto;
+    }
+    .status-badge.idle   { background: var(--card2); color: var(--muted); }
+    .status-badge.run    { background: #1a3a20; color: #7ee787; }
+    .status-badge.done   { background: #1a3a20; color: #56d364; }
+    .status-badge.err    { background: #3d1f1f; color: #f85149; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .dot.pulse { animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.25} }
+
+    /* ---- Descarga ---- */
+    #download-section { display: none; }
+    #download-btn {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      text-align: center;
+      background: var(--success);
+      color: #fff;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: background .15s;
+    }
+    #download-btn:hover { background: #2ea043; }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 700px) {
+      .middle-grid { grid-template-columns: 1fr; }
+      .api-grid     { grid-template-columns: 1fr; }
+      .action-row   { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2.2">
+    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+  </svg>
+  <h1>Extractor de Datos</h1>
+  <span class="badge">v3.8</span>
+</header>
+
+<!-- ===== MAIN ===== -->
+<main>
+
+  <!-- API Keys -->
+  <div class="card">
+    <div class="card-title">🔑 API Keys</div>
+    <div class="api-grid">
+      <div class="api-group">
+        <label for="apollo_api">API Key Apollo</label>
+        <div class="api-wrap">
+          <input type="password" id="apollo_api" placeholder="Ingresa tu API key de Apollo...">
+          <button class="eye-btn" onclick="toggleKey('apollo_api',this)" title="Mostrar/ocultar">👁</button>
+        </div>
+      </div>
+      <div class="api-group">
+        <label for="lusha_api">API Key Lusha</label>
+        <div class="api-wrap">
+          <input type="password" id="lusha_api" placeholder="Ingresa tu API key de Lusha...">
+          <button class="eye-btn" onclick="toggleKey('lusha_api',this)" title="Mostrar/ocultar">👁</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Países + Archivos -->
+  <div class="middle-grid">
+
+    <!-- Países -->
+    <div class="card">
+      <div class="card-title">
+        🌎 Países
+        <button class="small-btn" onclick="selectAll(true)" style="margin-left:auto">Todos</button>
+        <button class="small-btn" onclick="selectAll(false)" style="margin-left:4px">Ninguno</button>
+      </div>
+      <div class="countries-scroll" id="countries-list">
+        {% for region, paises_dict in paises.items() %}
+        <div class="region-header">
+          <span>{{ region }}</span>
+          <button class="region-toggle-btn" onclick="toggleRegion(this,'region-{{ loop.index }}')" title="Colapsar">▲</button>
+        </div>
+        <div id="region-{{ loop.index }}">
+          {% for pais_es, pais_en in paises_dict.items() %}
+          <label class="country-label">
+            <input type="checkbox" name="paises" value="{{ pais_en }}">
+            {{ pais_es }}
+          </label>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Archivos CSV -->
+    <div class="card">
+      <div class="card-title">📁 Archivos CSV</div>
+      <div class="files-stack">
+        <div class="file-group">
+          <label>CSV de Empresas <span style="color:var(--muted)">(columna: nombre de empresa)</span></label>
+          <div class="file-row">
+            <span class="file-display" id="empresas_display">Sin archivo seleccionado</span>
+            <button class="browse-btn" onclick="document.getElementById('empresas_file').click()">Examinar</button>
+            <input type="file" id="empresas_file" accept=".csv" onchange="onFile(this,'empresas_display')">
+          </div>
+        </div>
+        <div class="file-group">
+          <label>CSV de Cargos <span style="color:var(--muted)">(columna: cargo/título)</span></label>
+          <div class="file-row">
+            <span class="file-display" id="cargos_display">Sin archivo seleccionado</span>
+            <button class="browse-btn" onclick="document.getElementById('cargos_file').click()">Examinar</button>
+            <input type="file" id="cargos_file" accept=".csv" onchange="onFile(this,'cargos_display')">
+          </div>
+        </div>
+        <div class="file-group">
+          <label>CSV de Id Organizaciones <span style="color:var(--muted)">(columna: ID de org)</span></label>
+          <div class="file-row">
+            <span class="file-display" id="id_org_display">Sin archivo seleccionado</span>
+            <button class="browse-btn" onclick="document.getElementById('id_org_file').click()">Examinar</button>
+            <input type="file" id="id_org_file" accept=".csv" onchange="onFile(this,'id_org_display')">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Botones de acción — generados automáticamente desde CONNECTORS -->
+  <div class="card">
+    <div class="card-title">⚡ Acciones</div>
+    <div class="action-row">
+      {% for conn in connectors %}
+      <button
+        class="action-btn"
+        data-process="{{ conn.id }}"
+        style="--btn-color: {{ conn.color }}"
+        onclick="startProcess('{{ conn.id }}')"
+        title="{{ conn.label }}"
+      >
+        {{ conn.label }}
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Cancelar -->
+  <button id="cancel-btn" disabled onclick="cancelProcess()">
+    🛑 Cancelar proceso
+  </button>
+
+  <!-- Consola -->
+  <div class="card">
+    <div class="card-title console-header">
+      💻 Consola de Ejecución
+      <span class="status-badge idle" id="status-badge">
+        <span class="dot"></span> Listo
+      </span>
+      <button class="small-btn" style="margin-left:8px" onclick="clearConsole()">Limpiar</button>
+    </div>
+    <div id="console-output"></div>
+  </div>
+
+  <!-- Descarga -->
+  <div id="download-section">
+    <a id="download-btn" href="#" download>⬇ Descargar resultado CSV</a>
+  </div>
+
+</main>
+
+<!-- ===== JAVASCRIPT ===== -->
+<script>
+  let currentJobId = null;
+  let eventSource   = null;
+
+  /* ---- Mostrar/ocultar API key ---- */
+  function toggleKey(inputId, btn) {
+    const inp = document.getElementById(inputId);
+    inp.type  = inp.type === 'password' ? 'text' : 'password';
+    btn.textContent = inp.type === 'password' ? '👁' : '🔒';
+  }
+
+  /* ---- Selección de archivo ---- */
+  function onFile(input, displayId) {
+    const el = document.getElementById(displayId);
+    if (input.files.length > 0) {
+      el.textContent = input.files[0].name;
+      el.classList.add('loaded');
+    } else {
+      el.textContent = 'Sin archivo seleccionado';
+      el.classList.remove('loaded');
+    }
+  }
+
+  /* ---- Selección masiva de países ---- */
+  function selectAll(checked) {
+    document.querySelectorAll('input[name="paises"]').forEach(cb => cb.checked = checked);
+  }
+
+  /* ---- Colapsar/expandir región ---- */
+  function toggleRegion(btn, regionId) {
+    const el = document.getElementById(regionId);
+    const hidden = el.style.display === 'none';
+    el.style.display = hidden ? '' : 'none';
+    btn.textContent = hidden ? '▲' : '▼';
+  }
+
+  /* ---- Consola ---- */
+  function clearConsole() {
+    document.getElementById('console-output').innerHTML = '';
+  }
+
+  function addLog(raw) {
+    const container = document.getElementById('console-output');
+    // Decodificar saltos de línea escapados
+    const lines = raw.replace(/\\n/g, '\n').split('\n');
+    lines.forEach(line => {
+      if (line === '') return;
+      const div = document.createElement('div');
+      div.className = 'log-line';
+      if (line.includes('❌') || line.toUpperCase().includes('ERROR')) div.classList.add('err');
+      else if (line.includes('⚠') || line.toLowerCase().includes('advertencia')) div.classList.add('warn');
+      else if (line.startsWith('---') || line.startsWith('===')) div.classList.add('sep');
+      else if (line.startsWith('ℹ') || line.startsWith('📊') || line.startsWith('⏱')) div.classList.add('info');
+      div.textContent = line;
+      container.appendChild(div);
+    });
+    container.scrollTop = container.scrollHeight;
+  }
+
+  /* ---- Status badge ---- */
+  function setStatus(state, label) {
+    const b = document.getElementById('status-badge');
+    b.className = `status-badge ${state}`;
+    b.innerHTML = `<span class="dot ${state === 'run' ? 'pulse' : ''}"></span> ${label}`;
+  }
+
+  /* ---- Habilitar/deshabilitar botones ---- */
+  function setRunning(running) {
+    document.querySelectorAll('.action-btn').forEach(btn => btn.disabled = running);
+    document.getElementById('cancel-btn').disabled = !running;
+  }
+
+  /* ---- Mostrar sección de descarga ---- */
+  function showDownload(jobId) {
+    const sec = document.getElementById('download-section');
+    const btn = document.getElementById('download-btn');
+    btn.href = `/api/download/${jobId}`;
+    sec.style.display = 'block';
+    sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  /* ============================================================
+     INICIAR PROCESO
+     ============================================================ */
+  async function startProcess(processType) {
+    // Cerrar stream anterior si existe
+    if (eventSource) { eventSource.close(); eventSource = null; }
+
+    const fd = new FormData();
+    fd.append('process_type', processType);
+    fd.append('apollo_api',   document.getElementById('apollo_api').value.trim());
+    fd.append('lusha_api',    document.getElementById('lusha_api').value.trim());
+
+    // Países seleccionados
+    document.querySelectorAll('input[name="paises"]:checked').forEach(cb => {
+      fd.append('paises', cb.value);
+    });
+
+    // Archivos
+    ['empresas_file', 'cargos_file', 'id_org_file'].forEach(id => {
+      const input = document.getElementById(id);
+      if (input && input.files.length > 0) fd.append(id, input.files[0]);
+    });
+
+    clearConsole();
+    document.getElementById('download-section').style.display = 'none';
+    setRunning(true);
+    setStatus('run', 'Iniciando...');
+    addLog('📤 Enviando configuración al servidor...');
+
+    let res;
+    try {
+      res = await fetch('/api/start', { method: 'POST', body: fd });
+    } catch (e) {
+      addLog('❌ No se pudo conectar con el servidor.');
+      setRunning(false);
+      setStatus('err', 'Error de red');
+      return;
+    }
+
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      addLog('❌ ' + (json.error || 'Error desconocido'));
+      setRunning(false);
+      setStatus('err', 'Error');
+      return;
+    }
+
+    currentJobId = json.job_id;
+    addLog('✅ Proceso iniciado en servidor. Recibiendo logs...\n');
+    setStatus('run', 'Ejecutando...');
+    openStream(currentJobId);
+  }
+
+  /* ============================================================
+     STREAM SSE
+     ============================================================ */
+  function openStream(jobId) {
+    eventSource = new EventSource(`/api/stream/${jobId}`);
+
+    eventSource.onmessage = (e) => {
+      if (e.data === '__DONE__') {
+        eventSource.close(); eventSource = null;
+        setRunning(false);
+        setStatus('done', 'Completado ✓');
+        addLog('\n✅ Proceso finalizado. Haz clic en el botón de abajo para descargar el CSV.');
+        showDownload(jobId);
+      } else if (e.data !== '__PING__') {
+        addLog(e.data);
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource.close(); eventSource = null;
+      setRunning(false);
+      setStatus('err', 'Error de conexión');
+      addLog('❌ Se perdió la conexión con el servidor. Revisa los logs del servidor.');
+    };
+  }
+
+  /* ============================================================
+     CANCELAR
+     ============================================================ */
+  async function cancelProcess() {
+    if (!currentJobId) return;
+    addLog('🛑 Enviando señal de cancelación...');
+    try {
+      await fetch(`/api/cancel/${currentJobId}`, { method: 'POST' });
+    } catch(e) {
+      addLog('❌ No se pudo enviar la cancelación.');
+    }
+  }
+</script>
+
+</body>
+</html>
