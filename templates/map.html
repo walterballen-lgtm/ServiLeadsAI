@@ -664,6 +664,20 @@
     </div>
   </div>
 
+  <!-- Usuario logueado -->
+  <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;">
+    {% if user and user.picture %}
+    <img src="{{ user.picture }}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;" alt="avatar"/>
+    {% else %}
+    <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#1f6feb,#58a6ff);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">👤</div>
+    {% endif %}
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:.75rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ user.name if user else 'Usuario' }}</div>
+      <div style="font-size:.62rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ user.company if user else '' }}</div>
+    </div>
+    <a href="/logout" style="flex-shrink:0;font-size:.68rem;color:var(--muted);text-decoration:none;padding:3px 7px;border:1px solid var(--border);border-radius:6px;transition:color .2s,border-color .2s;" onmouseover="this.style.color='#f85149';this.style.borderColor='#f85149'" onmouseout="this.style.color='';this.style.borderColor=''">↩</a>
+  </div>
+
   <!-- Tema -->
   <div class="cfg-section">
     <div class="cfg-label">🎨 Tema</div>

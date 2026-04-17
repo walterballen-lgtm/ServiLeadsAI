@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ServiLeads AI — Iniciar sesión</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0d1117;
+    --surface: rgba(22,27,34,.88);
+    --border:  rgba(255,255,255,.1);
+    --text:    #e6edf3;
+    --muted:   #7d8590;
+    --accent:  #58a6ff;
+    --success: #3fb950;
+    --radius:  20px;
+    --blur:    blur(20px) saturate(160%);
+  }
+
+  body {
+    background: var(--bg);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ---- Orbs animados de fondo ---- */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(90px);
+    pointer-events: none;
+    will-change: transform;
+  }
+  .orb-1 {
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(88,166,255,.18) 0%, transparent 70%);
+    top: -250px; left: -180px;
+    animation: orb1 14s ease-in-out infinite;
+  }
+  .orb-2 {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(139,92,246,.14) 0%, transparent 70%);
+    bottom: -200px; right: -150px;
+    animation: orb2 18s ease-in-out infinite;
+  }
+  .orb-3 {
+    width: 350px; height: 350px;
+    background: radial-gradient(circle, rgba(20,184,166,.1) 0%, transparent 70%);
+    top: 40%; left: 55%;
+    animation: orb3 22s ease-in-out infinite;
+  }
+  .orb-4 {
+    width: 250px; height: 250px;
+    background: radial-gradient(circle, rgba(245,158,11,.08) 0%, transparent 70%);
+    top: 15%; right: 20%;
+    animation: orb4 16s ease-in-out infinite;
+  }
+
+  @keyframes orb1 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(50px,-70px) scale(1.15)} }
+  @keyframes orb2 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-60px,50px) scale(1.1)} }
+  @keyframes orb3 { 0%,100%{transform:translate(-50%,-50%) scale(1)} 50%{transform:translate(-50%,-50%) scale(1.25)} }
+  @keyframes orb4 { 0%,100%{transform:translate(0,0)} 33%{transform:translate(-30px,40px)} 66%{transform:translate(20px,-20px)} }
+
+  /* ---- Cuadrícula de fondo sutil ---- */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(88,166,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(88,166,255,.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ---- Card ---- */
+  .card {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    max-width: 440px;
+    margin: 20px;
+    background: var(--surface);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 44px 40px 36px;
+    box-shadow: 0 30px 70px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04);
+  }
+
+  /* ---- Brand ---- */
+  .brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 32px;
+    gap: 14px;
+  }
+  .brand-logo {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, #1f6feb 0%, #58a6ff 50%, #a5d6ff 100%);
+    border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px;
+    box-shadow: 0 8px 32px rgba(88,166,255,.4), 0 0 0 1px rgba(88,166,255,.2);
+    animation: logo-pulse 3s ease-in-out infinite;
+  }
+  @keyframes logo-pulse {
+    0%,100%{ box-shadow: 0 8px 32px rgba(88,166,255,.4), 0 0 0 1px rgba(88,166,255,.2); }
+    50%{     box-shadow: 0 8px 48px rgba(88,166,255,.6), 0 0 0 1px rgba(88,166,255,.35); }
+  }
+  .brand h1 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    background: linear-gradient(135deg, #e6edf3 30%, #58a6ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .brand p {
+    font-size: .82rem;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.5;
+    max-width: 280px;
+  }
+
+  /* ---- Divider ---- */
+  .divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 20px 0 24px;
+  }
+  .divider::before, .divider::after {
+    content: ''; flex: 1;
+    height: 1px; background: var(--border);
+  }
+  .divider span { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+
+  /* ---- Botón Google ---- */
+  .google-btn {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    width: 100%; padding: 14px 20px;
+    background: #fff;
+    border: none; border-radius: 12px;
+    color: #1a1a2e; font-size: .92rem; font-weight: 600;
+    cursor: pointer;
+    transition: box-shadow .25s, transform .15s, background .2s;
+    text-decoration: none;
+    font-family: 'Inter', sans-serif;
+    letter-spacing: -.01em;
+    box-shadow: 0 2px 12px rgba(0,0,0,.25);
+  }
+  .google-btn:hover {
+    box-shadow: 0 6px 28px rgba(255,255,255,.2);
+    transform: translateY(-2px);
+    background: #f8f8f8;
+  }
+  .google-btn:active { transform: translateY(0); }
+  .google-icon { flex-shrink: 0; }
+
+  /* ---- Botón deshabilitado ---- */
+  .btn-disabled {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 14px 20px;
+    background: rgba(255,255,255,.05);
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    color: var(--muted); font-size: .85rem;
+    cursor: not-allowed; font-family: 'Inter', sans-serif;
+  }
+
+  /* ---- Footer ---- */
+  .footer {
+    margin-top: 24px;
+    text-align: center;
+  }
+  .footer p {
+    font-size: .72rem; color: var(--muted); line-height: 1.6;
+  }
+  .footer strong { color: var(--text); }
+
+  /* ---- Badge de seguridad ---- */
+  .security-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(63,185,80,.08);
+    border: 1px solid rgba(63,185,80,.2);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: .68rem; color: #3fb950;
+    font-weight: 500; margin-bottom: 20px;
+  }
+
+  /* ---- Features list ---- */
+  .features {
+    display: flex; flex-direction: column; gap: 8px;
+    margin-bottom: 28px;
+  }
+  .feature-item {
+    display: flex; align-items: center; gap: 10px;
+    font-size: .78rem; color: var(--muted);
+  }
+  .feature-icon {
+    width: 28px; height: 28px; flex-shrink: 0;
+    background: rgba(88,166,255,.08);
+    border: 1px solid rgba(88,166,255,.15);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  </style>
+</head>
+<body>
+
+<!-- Orbs de fondo -->
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="orb orb-4"></div>
+
+<div class="card">
+
+  <!-- Brand -->
+  <div class="brand">
+    <div class="brand-logo">🤖</div>
+    <h1>ServiLeads AI</h1>
+    <p>Plataforma de extracción de contactos B2B con inteligencia artificial</p>
+  </div>
+
+  <!-- Badge seguridad -->
+  <div style="text-align:center">
+    <span class="security-badge">🔒 Acceso solo para equipo autorizado</span>
+  </div>
+
+  <!-- Features -->
+  <div class="features">
+    <div class="feature-item">
+      <div class="feature-icon">🔍</div>
+      <span>Extracción masiva de contactos vía <strong style="color:var(--text)">Apollo</strong> y <strong style="color:var(--text)">Lusha</strong></span>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">🗺️</div>
+      <span>Mapa interactivo de empresas en Colombia, Perú y Uruguay</span>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">⬇️</div>
+      <span>Exportación de datos en CSV listos para usar</span>
+    </div>
+  </div>
+
+  <div class="divider"><span>Continuar con</span></div>
+
+  <!-- Botón Google o mensaje de error -->
+  {% if has_google %}
+  <a href="/auth/google" class="google-btn">
+    <svg class="google-icon" width="20" height="20" viewBox="0 0 48 48">
+      <path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/>
+      <path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/>
+      <path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7z"/>
+      <path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/>
+    </svg>
+    Continuar con Google
+  </a>
+  {% else %}
+  <div class="btn-disabled">
+    ⚠️ Google OAuth no configurado en el servidor
+  </div>
+  {% endif %}
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>Al continuar aceptas que tu cuenta de Google será<br>verificada para acceso a esta plataforma.</p>
+  </div>
+
+</div>
+
+</body>
+</html>

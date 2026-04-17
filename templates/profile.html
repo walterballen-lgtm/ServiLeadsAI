@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ServiLeads AI — Completa tu perfil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0d1117;
+    --surface: rgba(22,27,34,.88);
+    --surface2:rgba(30,37,47,.9);
+    --border:  rgba(255,255,255,.1);
+    --text:    #e6edf3;
+    --muted:   #7d8590;
+    --accent:  #58a6ff;
+    --success: #3fb950;
+    --danger:  #f85149;
+    --radius:  20px;
+    --blur:    blur(20px) saturate(160%);
+  }
+
+  body {
+    background: var(--bg);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ---- Orbs ---- */
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; }
+  .orb-1 { width:600px;height:600px; background:radial-gradient(circle,rgba(88,166,255,.16) 0%,transparent 70%); top:-250px;left:-180px; animation:orb1 14s ease-in-out infinite; }
+  .orb-2 { width:500px;height:500px; background:radial-gradient(circle,rgba(139,92,246,.12) 0%,transparent 70%); bottom:-200px;right:-150px; animation:orb2 18s ease-in-out infinite; }
+  .orb-3 { width:300px;height:300px; background:radial-gradient(circle,rgba(63,185,80,.08) 0%,transparent 70%); top:40%;left:55%; animation:orb3 22s ease-in-out infinite; }
+  @keyframes orb1 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(50px,-70px) scale(1.15)} }
+  @keyframes orb2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-60px,50px) scale(1.1)} }
+  @keyframes orb3 { 0%,100%{transform:translate(-50%,-50%) scale(1)} 50%{transform:translate(-50%,-50%) scale(1.2)} }
+
+  body::before {
+    content:''; position:fixed; inset:0;
+    background-image:linear-gradient(rgba(88,166,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(88,166,255,.03) 1px,transparent 1px);
+    background-size:50px 50px; pointer-events:none; z-index:0;
+  }
+
+  /* ---- Card ---- */
+  .card {
+    position: relative; z-index: 10;
+    width: 100%; max-width: 500px; margin: 20px;
+    background: var(--surface);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px 36px 32px;
+    box-shadow: 0 30px 70px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04);
+  }
+
+  /* ---- Step indicator ---- */
+  .steps {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 28px; justify-content: center;
+  }
+  .step-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--border); transition: background .3s;
+  }
+  .step-dot.done { background: var(--success); }
+  .step-dot.active { background: var(--accent); width: 24px; border-radius: 4px; }
+  .step-line { flex: 1; max-width: 60px; height: 1px; background: var(--border); }
+  .step-line.done { background: var(--success); }
+
+  /* ---- User header ---- */
+  .user-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    margin-bottom: 24px;
+  }
+  .user-avatar {
+    width: 48px; height: 48px; border-radius: 50%;
+    border: 2px solid var(--success);
+    flex-shrink: 0;
+    object-fit: cover;
+    background: linear-gradient(135deg, #1f6feb, #58a6ff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    overflow: hidden;
+  }
+  .user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .user-info h3 { font-size: .9rem; font-weight: 600; }
+  .user-info p  { font-size: .75rem; color: var(--muted); margin-top: 1px; }
+  .verified-badge {
+    margin-left: auto; flex-shrink: 0;
+    display: flex; align-items: center; gap: 4px;
+    background: rgba(63,185,80,.1);
+    border: 1px solid rgba(63,185,80,.25);
+    border-radius: 20px; padding: 4px 10px;
+    font-size: .68rem; color: var(--success); font-weight: 600;
+  }
+
+  /* ---- Sección ---- */
+  .section-title {
+    font-size: .7rem; font-weight: 700;
+    color: var(--muted); text-transform: uppercase;
+    letter-spacing: .08em; margin-bottom: 10px;
+  }
+
+  /* ---- Name input ---- */
+  .input-wrap { margin-bottom: 22px; }
+  .inp {
+    width: 100%; padding: 12px 14px;
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    color: var(--text); font-size: .9rem;
+    font-family: 'Inter', sans-serif;
+    outline: none; transition: border-color .2s;
+  }
+  .inp:focus { border-color: var(--accent); }
+  .inp::placeholder { color: var(--muted); }
+
+  /* ---- Company cards ---- */
+  .company-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  .company-label {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 8px; padding: 16px 10px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface2);
+    cursor: pointer;
+    transition: border-color .2s, background .2s, transform .15s, box-shadow .2s;
+    user-select: none;
+    text-align: center;
+  }
+  .company-label:hover {
+    border-color: rgba(88,166,255,.4);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(88,166,255,.12);
+  }
+  .company-label:has(input:checked) {
+    border-color: var(--accent);
+    background: rgba(88,166,255,.1);
+    box-shadow: 0 0 0 2px rgba(88,166,255,.25), 0 6px 20px rgba(88,166,255,.15);
+  }
+  .company-label input { display: none; }
+  .company-icon { font-size: 26px; line-height: 1; }
+  .company-name {
+    font-size: .74rem; font-weight: 600;
+    color: var(--text); line-height: 1.3;
+  }
+
+  /* ---- Error ---- */
+  .error-msg {
+    background: rgba(248,81,73,.08);
+    border: 1px solid rgba(248,81,73,.25);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: .8rem; color: #f85149;
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* ---- Submit button ---- */
+  .submit-btn {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, #1f6feb 0%, #58a6ff 100%);
+    border: none; border-radius: 12px;
+    color: #fff; font-size: .95rem; font-weight: 700;
+    font-family: 'Inter', sans-serif; cursor: pointer;
+    transition: opacity .2s, transform .15s, box-shadow .2s;
+    box-shadow: 0 4px 20px rgba(88,166,255,.35);
+    letter-spacing: -.01em;
+  }
+  .submit-btn:hover { opacity: .9; transform: translateY(-2px); box-shadow: 0 8px 30px rgba(88,166,255,.45); }
+  .submit-btn:active { transform: translateY(0); }
+
+  /* ---- Back link ---- */
+  .back-link {
+    display: block; text-align: center; margin-top: 16px;
+    font-size: .75rem; color: var(--muted); text-decoration: none;
+    transition: color .2s;
+  }
+  .back-link:hover { color: var(--accent); }
+
+  /* ---- Card title ---- */
+  .card-title {
+    font-size: 1.25rem; font-weight: 700;
+    letter-spacing: -.02em; margin-bottom: 4px;
+  }
+  .card-subtitle {
+    font-size: .82rem; color: var(--muted); margin-bottom: 24px;
+  }
+  </style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<div class="card">
+
+  <!-- Step indicator -->
+  <div class="steps">
+    <div class="step-dot done"></div>
+    <div class="step-line done"></div>
+    <div class="step-dot active"></div>
+    <div class="step-line"></div>
+    <div class="step-dot"></div>
+  </div>
+
+  <div class="card-title">Completa tu perfil</div>
+  <div class="card-subtitle">Un último paso antes de acceder a la plataforma</div>
+
+  <!-- Usuario autenticado con Google -->
+  <div class="user-header">
+    <div class="user-avatar">
+      {% if user.picture %}
+      <img src="{{ user.picture }}" alt="avatar"/>
+      {% else %}
+      👤
+      {% endif %}
+    </div>
+    <div class="user-info">
+      <h3>{{ user.name or 'Usuario' }}</h3>
+      <p>{{ user.email }}</p>
+    </div>
+    <div class="verified-badge">✓ Google</div>
+  </div>
+
+  <form method="POST" action="/profile" id="profile-form">
+
+    {% if error %}
+    <div class="error-msg">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <!-- Nombre -->
+    <div class="input-wrap">
+      <div class="section-title">Tu nombre completo</div>
+      <input class="inp" type="text" name="name" id="name-inp"
+             value="{{ user.name or '' }}"
+             placeholder="Ej: María García" required autocomplete="name"/>
+    </div>
+
+    <!-- Empresa -->
+    <div>
+      <div class="section-title">Selecciona tu empresa</div>
+      <div class="company-grid">
+
+        <label class="company-label">
+          <input type="radio" name="company" value="SERVINFORMACION" required
+                 {% if request.form.get('company') == 'SERVINFORMACION' %}checked{% endif %}>
+          <span class="company-icon">📊</span>
+          <span class="company-name">SERVINFORMACION</span>
+        </label>
+
+        <label class="company-label">
+          <input type="radio" name="company" value="Savin the amazon"
+                 {% if request.form.get('company') == 'Savin the amazon' %}checked{% endif %}>
+          <span class="company-icon">🌿</span>
+          <span class="company-name">Savin the amazon</span>
+        </label>
+
+        <label class="company-label">
+          <input type="radio" name="company" value="CNID"
+                 {% if request.form.get('company') == 'CNID' %}checked{% endif %}>
+          <span class="company-icon">🔬</span>
+          <span class="company-name">CNID</span>
+        </label>
+
+        <label class="company-label">
+          <input type="radio" name="company" value="proaia"
+                 {% if request.form.get('company') == 'proaia' %}checked{% endif %}>
+          <span class="company-icon">🤖</span>
+          <span class="company-name">proaia</span>
+        </label>
+
+      </div>
+    </div>
+
+    <button type="submit" class="submit-btn">Acceder a ServiLeads AI →</button>
+  </form>
+
+  <a href="/logout" class="back-link">← Cambiar cuenta de Google</a>
+
+</div>
+
+<script>
+// Validar que se seleccionó empresa antes de enviar
+document.getElementById('profile-form').addEventListener('submit', function(e) {
+  const checked = document.querySelector('input[name="company"]:checked');
+  if (!checked) {
+    e.preventDefault();
+    const grid = document.querySelector('.company-grid');
+    grid.style.outline = '1.5px solid #f85149';
+    grid.style.borderRadius = '14px';
+    setTimeout(() => { grid.style.outline = ''; }, 2000);
+  }
+});
+</script>
+</body>
+</html>

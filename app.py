@@ -11,10 +11,13 @@ PARA AGREGAR UN NUEVO CONECTOR:
 =============================================================
 """
 
-import os, uuid, queue, threading, tempfile, csv
+import os, uuid, queue, threading, tempfile, csv, secrets
+from functools import wraps
+from urllib.parse import urlencode
 from flask import (
     Flask, render_template, request, jsonify,
     Response, send_file, stream_with_context,
+    redirect, url_for, session as flask_session,
 )
 
 import apollo_script, lusha_script, apollo_org, lusha_org
@@ -35,6 +38,31 @@ app.config["JSON_AS_ASCII"] = False  # UTF-8 limpio en respuestas JSON
 # ================================================================
 APOLLO_API_KEY = os.environ.get("APOLLO_API_KEY", "")
 LUSHA_API_KEY  = os.environ.get("LUSHA_API_KEY",  "")
+
+# ================================================================
+# GOOGLE OAUTH — configura en Render → Environment Variables
+# ================================================================
+GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "")  # ej: https://tu-app.onrender.com/auth/callback
+
+GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+ALLOWED_COMPANIES = ["SERVINFORMACION", "Savin the amazon", "CNID", "proaia"]
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = flask_session.get("user")
+        if not user:
+            return redirect(url_for("login"))
+        if not user.get("company"):
+            return redirect(url_for("profile"))
+        return f(*args, **kwargs)
+    return decorated
 
 
 # ================================================================
@@ -777,9 +805,94 @@ def _launch_job(conv: ConvState) -> dict:
 # RUTAS
 # ================================================================
 
+@app.route("/login")
+def login():
+    if flask_session.get("user", {}).get("company"):
+        return redirect(url_for("index"))
+    return render_template("login.html", has_google=bool(GOOGLE_CLIENT_ID))
+
+
+@app.route("/auth/google")
+def auth_google():
+    if not GOOGLE_CLIENT_ID:
+        return "GOOGLE_CLIENT_ID no configurado", 500
+    redirect_uri = GOOGLE_REDIRECT_URI or request.url_root.rstrip("/") + "/auth/callback"
+    flask_session["oauth_state"]       = secrets.token_urlsafe(32)
+    flask_session["oauth_redirect_uri"] = redirect_uri
+    params = {
+        "client_id":     GOOGLE_CLIENT_ID,
+        "redirect_uri":  redirect_uri,
+        "scope":         "openid email profile",
+        "response_type": "code",
+        "state":         flask_session["oauth_state"],
+        "access_type":   "online",
+        "prompt":        "select_account",
+    }
+    return redirect(GOOGLE_AUTH_URL + "?" + urlencode(params))
+
+
+@app.route("/auth/callback")
+def auth_callback():
+    code     = request.args.get("code")
+    state    = request.args.get("state")
+    expected = flask_session.pop("oauth_state", None)
+    redirect_uri = flask_session.pop("oauth_redirect_uri", "")
+
+    if not code or state != expected:
+        return redirect(url_for("login"))
+
+    token_resp = requests.post(GOOGLE_TOKEN_URL, data={
+        "code":          code,
+        "client_id":     GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri":  redirect_uri,
+        "grant_type":    "authorization_code",
+    })
+    access_token = token_resp.json().get("access_token")
+    if not access_token:
+        return redirect(url_for("login"))
+
+    info = requests.get(GOOGLE_INFO_URL,
+                        headers={"Authorization": f"Bearer {access_token}"}).json()
+
+    flask_session["user"] = {
+        "email":     info.get("email", ""),
+        "name":      info.get("name", ""),
+        "picture":   info.get("picture", ""),
+        "google_id": info.get("sub", ""),
+        "company":   None,
+    }
+    return redirect(url_for("profile"))
+
+
+@app.route("/profile", methods=["GET", "POST"])
+def profile():
+    if "user" not in flask_session:
+        return redirect(url_for("login"))
+    user = flask_session["user"]
+    if request.method == "POST":
+        name    = request.form.get("name", "").strip()
+        company = request.form.get("company", "").strip()
+        if not name or company not in ALLOWED_COMPANIES:
+            return render_template("profile.html", user=user,
+                                   companies=ALLOWED_COMPANIES,
+                                   error="Completa todos los campos.")
+        flask_session["user"] = {**user, "name": name, "company": company}
+        flask_session.modified = True
+        return redirect(url_for("index"))
+    return render_template("profile.html", user=user, companies=ALLOWED_COMPANIES)
+
+
+@app.route("/logout")
+def logout():
+    flask_session.clear()
+    return redirect(url_for("login"))
+
+
 @app.route("/")
+@login_required
 def index():
-    return render_template("map.html")
+    return render_template("map.html", user=flask_session.get("user", {}))
 
 
 @app.route("/api/geojson")
