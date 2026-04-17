@@ -11,7 +11,7 @@ PARA AGREGAR UN NUEVO CONECTOR:
 =============================================================
 """
 
-import os, uuid, queue, threading, tempfile, csv, secrets
+import os, uuid, queue, threading, tempfile, csv, secrets, json, re
 import requests
 from functools import wraps
 from urllib.parse import urlencode
@@ -44,6 +44,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 # ================================================================
 APOLLO_API_KEY = os.environ.get("APOLLO_API_KEY", "")
 LUSHA_API_KEY  = os.environ.get("LUSHA_API_KEY",  "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 # ================================================================
 # GOOGLE OAUTH — configura en Render → Environment Variables
@@ -241,6 +243,7 @@ class ConvState:
         self.job_id: str = None
         self.upload_dir = tempfile.mkdtemp(prefix=f"conv_{sid[:8]}_")
         self.pending_confirm_file: dict = None  # {field, path, header, count}
+        self.gemini_history: list = []
 
     @property
     def api_name(self) -> str:
@@ -305,6 +308,196 @@ def _get_csv_header(path: str) -> str:
             continue
     return ""
 
+
+
+# ================================================================
+# GEMINI AI
+# ================================================================
+_GEMINI_SYSTEM = """\
+Eres ServiLeads AI, asistente de extracción de contactos B2B.
+
+REGLA CRÍTICA: Responde ÚNICAMENTE con un objeto JSON. Sin texto extra antes ni después.
+Formato obligatorio (respeta exactamente los nombres de las claves):
+{{"message": "<texto markdown>", "action": "<accion_o_null>", "params": {{}}}}
+
+ACCIONES DISPONIBLES:
+- "start_process"  → Iniciar extracción. params: {{"process_type": "APOLLO_CONTACT"|"APOLLO_ORG"|"LUSHA_CONTACT"|"LUSHA_ORG"}}
+- "download_data"  → Descargar CSV del mapa. params: {{"pais": "Colombia"|"Peru"|"Uruguay"|null, "empresa": "<nombre_o_null>"}}
+- "show_summary"   → Mostrar resumen del mapa. params: {{}}
+- "search_map"     → Buscar en la base de datos. params: {{"query": "<texto>", "field": "nombre"|"empresa"|"cargo"|"correo", "pais": "<pais_o_null>"}}
+- null             → Solo responder con texto
+
+PROCESOS DE EXTRACCIÓN (archivos Python del servidor):
+- APOLLO_CONTACT  → apollo_script.py  — Busca personas en empresas por cargo usando Apollo.io. Requiere: CSV empresas, CSV cargos, países destino. Produce: nombre, cargo, correo, teléfono, LinkedIn.
+- APOLLO_ORG      → apollo_org.py     — Enriquece organizaciones por ID en Apollo. Requiere: CSV de IDs de organización.
+- LUSHA_CONTACT   → lusha_script.py   — Igual que APOLLO_CONTACT pero con API Lusha (mayor cobertura LATAM). Requiere: CSV empresas, CSV cargos, países.
+- LUSHA_ORG       → lusha_org.py      — Enriquece organizaciones con Lusha. Requiere: CSV de IDs.
+
+BASE DE DATOS DEL MAPA (shapefile demo_info — cargado en memoria):
+{map_summary}
+Campos del shapefile: pais, empresa, nombre, cargo, correo, telefono, url
+
+ESTADO DE LA CONVERSACIÓN:
+{conv_state}
+
+REGLAS DE COMPORTAMIENTO:
+- Si el usuario pregunta si alguien existe o pide buscar por nombre → action "search_map", field="nombre"
+- Si pregunta por una empresa en la base → field="empresa"
+- Si pregunta por un cargo → field="cargo"
+- Si no menciona país al buscar → pais=null, y en el message pregunta si quiere filtrar por país
+- Si el usuario quiere extraer/buscar contactos con Apollo o Lusha → action "start_process"
+- Si quiere descargar datos del mapa → action "download_data"
+- Sé conciso. Usa **negritas** para datos importantes. No repitas el menú de procesos.\
+"""
+
+
+def _extract_json(text: str) -> tuple[dict, str]:
+    """Extrae el primer objeto JSON del texto. Retorna (dict, error_str)."""
+    # Intentar parsear directamente primero
+    try:
+        result = json.loads(text.strip())
+        if isinstance(result, dict):
+            return result, ""
+    except Exception:
+        pass
+    # Buscar bloque ```json ... ``` o ``` ... ```
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if m:
+        try:
+            result = json.loads(m.group(1))
+            if isinstance(result, dict):
+                return result, ""
+        except Exception as e:
+            return {}, f"JSON en bloque de código inválido: {e}"
+    # Buscar el primer { ... } más externo
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            result = json.loads(m.group(0))
+            if isinstance(result, dict):
+                return result, ""
+        except Exception as e:
+            return {}, f"JSON encontrado pero inválido: {e}\nTexto raw: {text[:300]}"
+    return {}, f"No se encontró JSON en la respuesta de Gemini.\nRespuesta raw: {text[:300]}"
+
+
+def _gemini_context(conv: "ConvState") -> str:
+    feats = GEOJSON_CACHE.get("features", [])
+    from collections import Counter
+    by_pais = Counter(f["properties"].get("pais", "?") for f in feats)
+    summary = f"{len(feats)} registros totales — " + ", ".join(
+        f"{p}: {c}" for p, c in sorted(by_pais.items(), key=lambda x: -x[1])
+    )
+    state = f"step={conv.step}"
+    if conv.process_type: state += f", proceso={conv.process_type}"
+    if conv.empresas_count: state += f", empresas_cargadas={conv.empresas_count}"
+    if conv.cargos_count:   state += f", cargos_cargados={conv.cargos_count}"
+    if conv.paises_names:   state += f", países={conv.paises_names}"
+    return _GEMINI_SYSTEM.format(map_summary=summary, conv_state=state)
+
+
+def call_gemini(conv: "ConvState", user_message: str) -> dict:
+    """
+    Llama a Gemini. Siempre devuelve dict con claves: message, action, params, _error.
+    _error contiene descripción detallada si algo falló (para mostrar en chat en debug).
+    """
+    empty = {"message": None, "action": None, "params": {}, "_error": None}
+
+    if not GEMINI_API_KEY:
+        empty["_error"] = "GEMINI_API_KEY no configurada en variables de entorno."
+        return empty
+
+    conv.gemini_history.append({"role": "user", "parts": [{"text": user_message}]})
+    body = {
+        "system_instruction": {"parts": [{"text": _gemini_context(conv)}]},
+        "contents": conv.gemini_history[-20:],
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600},
+    }
+    try:
+        resp = requests.post(GEMINI_URL, params={"key": GEMINI_API_KEY}, json=body, timeout=20)
+        if resp.status_code != 200:
+            conv.gemini_history.pop()
+            empty["_error"] = f"Gemini HTTP {resp.status_code}: {resp.text[:400]}"
+            return empty
+
+        raw = resp.json()
+        candidates = raw.get("candidates", [])
+        if not candidates:
+            conv.gemini_history.pop()
+            empty["_error"] = f"Gemini sin candidatos. Respuesta: {str(raw)[:400]}"
+            return empty
+
+        raw_text = candidates[0]["content"]["parts"][0]["text"]
+        result, parse_error = _extract_json(raw_text)
+
+        if parse_error:
+            conv.gemini_history.pop()
+            empty["_error"] = parse_error
+            return empty
+
+        conv.gemini_history.append({"role": "model", "parts": [{"text": raw_text}]})
+        return {
+            "message": result.get("message") or None,
+            "action":  result.get("action")  or None,
+            "params":  result.get("params")  if isinstance(result.get("params"), dict) else {},
+            "_error":  None,
+        }
+    except requests.exceptions.Timeout:
+        conv.gemini_history.pop()
+        empty["_error"] = "Gemini tardó más de 20 segundos (timeout)."
+        return empty
+    except Exception as e:
+        if conv.gemini_history and conv.gemini_history[-1]["role"] == "user":
+            conv.gemini_history.pop()
+        empty["_error"] = f"Error inesperado llamando a Gemini: {e}"
+        return empty
+
+
+# ================================================================
+# BÚSQUEDA EN MAPA
+# ================================================================
+def resp_search_map(query: str, field: str = "nombre", pais: str = "") -> list:
+    feats = GEOJSON_CACHE.get("features", [])
+    q = query.lower().strip()
+    valid_fields = {"nombre", "empresa", "cargo", "correo", "url", "telefono"}
+    if field not in valid_fields:
+        field = "nombre"
+
+    matches = [
+        f for f in feats
+        if q in str(f["properties"].get(field, "")).lower()
+        and (not pais or f["properties"].get("pais", "").lower() == pais.lower())
+    ]
+
+    scope = f" en **{pais}**" if pais else ""
+    if not matches:
+        countries = sorted({f["properties"].get("pais", "") for f in feats if f["properties"].get("pais")})
+        return [
+            _text(f"No encontré ningún registro con **\"{query}\"** en el campo *{field}*{scope}."),
+            _replies(
+                [{"label": f"🌍 Buscar en todos los países", "value": f"SEARCH:{field}:{query}:ALL"}] +
+                [{"label": f"{_FLAGS.get(c, '🌍')} Buscar en {c}", "value": f"SEARCH:{field}:{query}:{c}"}
+                 for c in countries]
+            ),
+        ]
+
+    lines = [f"🔍 **{len(matches)} resultado(s)** para \"{query}\"{scope}:\n"]
+    for feat in matches[:12]:
+        p = feat["properties"]
+        lines.append(f"• **{p.get('nombre','?')}** — {p.get('cargo','?')} @ *{p.get('empresa','?')}* ({p.get('pais','?')})")
+        if p.get("correo"):
+            lines.append(f"  📧 {p.get('correo')}")
+    if len(matches) > 12:
+        lines.append(f"\n_...y {len(matches) - 12} resultados más._")
+
+    msgs = [_text("\n".join(lines))]
+    if pais:
+        cnt_all = sum(1 for f in feats if q in str(f["properties"].get(field, "")).lower())
+        if cnt_all > len(matches):
+            msgs.append(_replies([
+                {"label": f"🌍 Ver también en otros países ({cnt_all} total)", "value": f"SEARCH:{field}:{query}:ALL"}
+            ]))
+    return msgs
 
 
 def leer_csv_primera_columna(path: str) -> list:
@@ -677,8 +870,86 @@ def handle_turn(sid: str, payload: dict) -> list:
             _upload(field, f"📎 Reemplazar CSV de {label_map.get(field, field)}", "Primera columna = dato esperado"),
         ]
 
-    # Intención libre (texto)
+    # Búsqueda en mapa desde quick reply
+    if ptype == "action" and value.startswith("SEARCH:"):
+        parts = value.split(":", 3)
+        # SEARCH:field:query:pais
+        s_field = parts[1] if len(parts) > 1 else "nombre"
+        s_query = parts[2] if len(parts) > 2 else ""
+        s_pais  = parts[3] if len(parts) > 3 else ""
+        if s_pais == "ALL": s_pais = ""
+        if s_query:
+            return resp_search_map(s_query, s_field, s_pais)
+
+    # Intención libre (texto) — Gemini primero, fallback a keywords
     if ptype == "text" and value:
+        gemini = call_gemini(conv, value)
+
+        # Si Gemini falló, mostrar error detallado + continuar con keywords
+        if gemini["_error"]:
+            print(f"[gemini] {gemini['_error']}")
+            error_msg = _text(f"⚠️ _(Gemini no disponible: {gemini['_error']})_")
+            intent = detect_intent(value)
+            if intent == "greeting": return [error_msg] + resp_greeting()
+            if intent == "help":     return [error_msg] + resp_help(conv)
+            if intent == "show_data":return [error_msg] + resp_show_data(conv)
+            if intent == "download": return [error_msg] + resp_download(value, conv)
+            if intent == "describe": return [error_msg] + resp_describe(value, conv)
+            if intent == "start" and conv.step == "welcome":
+                return [error_msg, _text("¿Con qué herramienta quieres trabajar?"), _process_menu()]
+            return [error_msg] + _mid_flow_note(conv)
+
+        # Ejecutar acción de Gemini
+        action  = gemini.get("action")
+        params  = gemini.get("params") or {}
+        msg_txt = gemini.get("message")
+
+        if action == "start_process":
+            ptype_req = params.get("process_type", "")
+            if ptype_req in {c["id"] for c in CONNECTORS}:
+                conv.process_type = ptype_req
+                conv.step = conv.STEP_MAP[ptype_req][0]
+                conn = next(c for c in CONNECTORS if c["id"] == ptype_req)
+                msgs = ([_text(msg_txt)] if msg_txt else
+                        [_text(f"Perfecto, vamos con **{conn['label']}** {conn['emoji']}")])
+                return msgs + step_messages(conv)
+
+        if action == "download_data":
+            pais_g    = params.get("pais") or ""
+            empresa_g = params.get("empresa") or ""
+            feats = GEOJSON_CACHE.get("features", [])
+            filtered = [f for f in feats if
+                (not pais_g    or f["properties"].get("pais")    == pais_g) and
+                (not empresa_g or f["properties"].get("empresa") == empresa_g)]
+            if filtered:
+                qs, lp = [], []
+                if pais_g:    qs.append(f"pais={pais_g}");       lp.append(pais_g)
+                if empresa_g: qs.append(f"empresa={empresa_g}"); lp.append(empresa_g)
+                url   = "/api/download-map?" + "&".join(qs) if qs else "/api/download-map"
+                label = " — ".join(lp) if lp else "todos"
+                msgs = [_text(msg_txt)] if msg_txt else [_text(f"Encontré **{len(filtered)} registros** para {label}.")]
+                return msgs + [_link(url, f"⬇️ Descargar {label} ({len(filtered)} registros)")]
+            return resp_download(value, conv)
+
+        if action == "show_summary":
+            msgs = resp_show_data(conv)
+            if msg_txt: msgs.insert(0, _text(msg_txt))
+            return msgs
+
+        if action == "search_map":
+            s_query = params.get("query", "").strip()
+            s_field = params.get("field", "nombre")
+            s_pais  = params.get("pais") or ""
+            if s_query:
+                msgs = []
+                if msg_txt: msgs.append(_text(msg_txt))
+                return msgs + resp_search_map(s_query, s_field, s_pais)
+
+        # Gemini respondió con solo texto (action=null)
+        if msg_txt:
+            return [_text(msg_txt)] + _mid_flow_note(conv)
+
+        # Fallback keywords si Gemini no devolvió nada útil
         intent = detect_intent(value)
         if intent == "greeting": return resp_greeting()
         if intent == "help":     return resp_help(conv)
