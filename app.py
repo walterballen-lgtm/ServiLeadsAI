@@ -639,15 +639,29 @@ def handle_turn(sid: str, payload: dict) -> list:
     # Confirmación de archivo sospechoso (Yes/No)
     if ptype == "action" and value.startswith("CONFIRM_FILE:"):
         parts = value.split(":", 1)[1]
+        label_map = {"empresas_file": "Empresas", "cargos_file": "Cargos", "id_org_file": "Id Organizaciones"}
         if parts == "yes" and conv.pending_confirm_file:
             info = conv.pending_confirm_file
             conv.pending_confirm_file = None
-            payload2 = {"type": "file_uploaded", "field": info["field"], "path": info["path"]}
-            return handle_turn(sid, payload2)
+            field = info["field"]
+            # Asignar directamente sin re-validar cabecera
+            if field == "empresas_file":
+                conv.empresas_path  = info["path"]
+                conv.empresas_count = info["count"]
+            elif field == "cargos_file":
+                conv.cargos_path  = info["path"]
+                conv.cargos_count = info["count"]
+            elif field == "id_org_file":
+                conv.id_org_path  = info["path"]
+                conv.id_org_count = info["count"]
+            conv.advance()
+            count = info["count"]
+            return [_text(f"✅ {count} registros cargados."),
+                    _replies([{"label": f"🔄 Reemplazar archivo", "value": f"REUPLOAD:{field}"}])
+                    ] + step_messages(conv)
         elif parts == "no" and conv.pending_confirm_file:
             info = conv.pending_confirm_file
             conv.pending_confirm_file = None
-            label_map = {"empresas_file": "Empresas", "cargos_file": "Cargos", "id_org_file": "Id Organizaciones"}
             field = info["field"]
             return [
                 _text("Entendido. Sube el archivo correcto 👇"),
