@@ -519,10 +519,8 @@ def resp_search_map(query: str, field: str = "nombre", empresa_filter: str = "",
         p = feat["properties"]
         lines.append(f"• **{p.get('nombre','?')}** — {p.get('cargo','?')}")
         lines.append(f"  🏢 {p.get('empresa','?')} ({p.get('pais','?')})")
-        if p.get("correo"):
-            lines.append(f"  📧 {p.get('correo')}")
-        if p.get("telefono"):
-            lines.append(f"  📞 {p.get('telefono')}")
+        lines.append(f"  📧 {p.get('correo') or 'No disponible'}")
+        lines.append(f"  📞 {p.get('telefono') or 'No disponible'}")
 
     msgs = [_text("\n".join(lines))]
 
