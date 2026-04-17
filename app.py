@@ -882,6 +882,19 @@ def auth_callback():
     info = requests.get(GOOGLE_INFO_URL,
                         headers={"Authorization": f"Bearer {access_token}"}).json()
 
+    email  = info.get("email", "").lower().strip()
+    domain = email.split("@")[-1] if "@" in email else ""
+
+    # Listas de acceso (vacías = sin restricción)
+    _emails  = [e.strip().lower() for e in os.environ.get("ALLOWED_EMAILS",  "").split(",") if e.strip()]
+    _domains = [d.strip().lower() for d in os.environ.get("ALLOWED_DOMAINS", "").split(",") if d.strip()]
+
+    if (_emails or _domains):
+        allowed = (email in _emails) or (domain in _domains)
+        if not allowed:
+            return render_template("login.html", has_google=bool(GOOGLE_CLIENT_ID),
+                                   access_error=f"La cuenta {email} no tiene acceso a esta plataforma.")
+
     flask_session["user"] = {
         "email":     info.get("email", ""),
         "name":      info.get("name", ""),
