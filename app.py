@@ -12,6 +12,7 @@ PARA AGREGAR UN NUEVO CONECTOR:
 """
 
 import os, uuid, queue, threading, tempfile, csv, secrets
+import requests
 from functools import wraps
 from urllib.parse import urlencode
 from flask import (
@@ -817,12 +818,33 @@ def login():
     return render_template("login.html", has_google=bool(GOOGLE_CLIENT_ID))
 
 
+def _build_redirect_uri() -> str:
+    """Siempre devuelve HTTPS — Google rechaza http:// en producción."""
+    if GOOGLE_REDIRECT_URI:
+        return GOOGLE_REDIRECT_URI
+    base = request.url_root.rstrip("/")
+    base = base.replace("http://", "https://", 1)
+    return base + "/auth/callback"
+
+
+@app.route("/debug/oauth")
+def debug_oauth():
+    """Ruta de diagnóstico — muestra la URI exacta que se enviará a Google."""
+    uri = _build_redirect_uri()
+    return jsonify({
+        "redirect_uri":        uri,
+        "GOOGLE_CLIENT_ID_set": bool(GOOGLE_CLIENT_ID),
+        "GOOGLE_REDIRECT_URI_env": GOOGLE_REDIRECT_URI or "(no configurado, se auto-calcula)",
+        "request_url_root":    request.url_root,
+    })
+
+
 @app.route("/auth/google")
 def auth_google():
     if not GOOGLE_CLIENT_ID:
-        return "GOOGLE_CLIENT_ID no configurado", 500
-    redirect_uri = GOOGLE_REDIRECT_URI or request.url_root.rstrip("/") + "/auth/callback"
-    flask_session["oauth_state"]       = secrets.token_urlsafe(32)
+        return "GOOGLE_CLIENT_ID no configurado en Render → Environment Variables", 500
+    redirect_uri = _build_redirect_uri()
+    flask_session["oauth_state"]        = secrets.token_urlsafe(32)
     flask_session["oauth_redirect_uri"] = redirect_uri
     params = {
         "client_id":     GOOGLE_CLIENT_ID,
