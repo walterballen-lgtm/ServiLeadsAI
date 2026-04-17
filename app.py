@@ -871,6 +871,7 @@ def stream(job_id: str):
         return jsonify({"error": "Job no encontrado"}), 404
 
     def generate():
+        yield "retry: 3600000\n\n"  # desactiva reconexión automática del navegador
         q: queue.Queue = job["queue"]
         while True:
             try:

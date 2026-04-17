@@ -1157,13 +1157,13 @@ function sendAction(value, label) {
   sendTurn({ type: 'action', value });
 }
 
-function doRestart() {
+async function doRestart() {
   SID = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   localStorage.setItem('servi_sid', SID);
   currentJobId = null;
   if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('chat-messages').innerHTML = '';
-  sendTurn({ type: 'init' });
+  return sendTurn({ type: 'init' });
 }
 
 function confirmCountries(cardEl) {
@@ -1182,19 +1182,37 @@ function triggerUpload(field, areaEl) {
   inp.onchange = async () => {
     const file = inp.files[0];
     if (!file) return;
-    areaEl.innerHTML = `<span class="uicon">⏳</span><div>Subiendo <strong>${file.name}</strong>...</div>`;
+    areaEl.innerHTML = `<span class="uicon">⏳</span><div>Subiendo <strong>${file.name}</strong>…</div>`;
     const fd = new FormData(); fd.append('file', file);
     try {
-      const res  = await fetch(`/api/upload/${SID}/${field}`, { method: 'POST', body: fd });
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 60000); // 60s timeout
+      const res = await fetch(`/api/upload/${SID}/${field}`, {
+        method: 'POST', body: fd, signal: controller.signal
+      });
+      clearTimeout(tid);
       const json = await res.json();
+
+      // Sesión expirada (servidor reiniciado): reiniciar conversación
+      if (!res.ok && (json.error === 'Sesión no encontrada' || res.status === 404)) {
+        areaEl.innerHTML = `<span class="uicon">🔄</span><div>Sesión expirada, reconectando…</div>`;
+        await doRestart();
+        areaEl.innerHTML = `<span class="uicon">📎</span><div>Intenta subir el archivo de nuevo.</div>`;
+        return;
+      }
       if (json.error) { areaEl.innerHTML = `<span class="uicon">❌</span><div>${json.error}</div>`; return; }
+
       areaEl.classList.add('done');
       areaEl.innerHTML = `<span class="uicon">✅</span><div><strong>${file.name}</strong> cargado.</div>`;
       areaEl.style.cursor = 'default';
       addUserBubble(`📎 ${file.name}`);
       renderMessages(json.messages);
     } catch(e) {
-      areaEl.innerHTML = `<span class="uicon">❌</span><div>Error al subir. Intenta de nuevo.</div>`;
+      if (e.name === 'AbortError') {
+        areaEl.innerHTML = `<span class="uicon">⏱️</span><div>Tiempo de espera agotado. Verifica tu conexión e intenta de nuevo.</div>`;
+      } else {
+        areaEl.innerHTML = `<span class="uicon">❌</span><div>No se pudo conectar con el servidor. Recarga la página e intenta de nuevo.</div>`;
+      }
     }
   };
   inp.click();
@@ -1363,8 +1381,9 @@ function renderMessage(msg) {
         }
       };
       eventSource.onerror = () => {
+        if (!eventSource) return; // __DONE__ ya cerró la conexión limpiamente
         eventSource.close(); eventSource = null;
-        stat.innerHTML = '❌ Se perdió la conexión.';
+        stat.innerHTML = '❌ Se perdió la conexión con el servidor. Escribe <em>reiniciar</em> para intentar de nuevo.';
       };
       return wrap;
     }
