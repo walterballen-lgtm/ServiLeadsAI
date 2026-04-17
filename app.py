@@ -30,7 +30,12 @@ except ImportError:
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "servi-leads-ai-2024")
-app.config["JSON_AS_ASCII"] = False  # UTF-8 limpio en respuestas JSON
+app.config["JSON_AS_ASCII"] = False
+
+# Render (y la mayoría de plataformas cloud) corren detrás de un proxy HTTPS.
+# Sin esto, request.url_root devuelve "http://" y Google rechaza el redirect.
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # ================================================================
 # API KEYS — configúralas en Render → Environment Variables
