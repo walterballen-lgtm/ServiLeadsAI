@@ -138,16 +138,15 @@
   }
 
   .company-label {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 0; padding: 18px 12px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px 14px;
     border: 1.5px solid var(--border);
     border-radius: 14px;
     background: var(--surface2);
     cursor: pointer;
     transition: border-color .2s, background .2s, transform .15s, box-shadow .2s;
     user-select: none;
-    text-align: center;
-    min-height: 72px;
+    min-height: 80px;
   }
   .company-label:hover {
     border-color: rgba(88,166,255,.4);
@@ -160,13 +159,20 @@
     box-shadow: 0 0 0 2px rgba(88,166,255,.25), 0 6px 20px rgba(88,166,255,.15);
   }
   .company-label input { display: none; }
-  .company-name {
-    font-size: .82rem; font-weight: 700;
-    color: var(--text); line-height: 1.35;
-    letter-spacing: -.01em;
+  .company-logo {
+    max-width: 120px;
+    max-height: 44px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+    opacity: 0.75;
+    transition: opacity .2s, filter .2s;
   }
-  .company-label:has(input:checked) .company-name {
-    color: var(--accent);
+  .company-label:hover .company-logo { opacity: 1; }
+  .company-label:has(input:checked) .company-logo {
+    filter: brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(190deg);
+    opacity: 1;
   }
 
   /* ---- Error ---- */
@@ -270,29 +276,25 @@
         <label class="company-label">
           <input type="radio" name="company" value="SERVINFORMACION" required
                  {% if request.form.get('company') == 'SERVINFORMACION' %}checked{% endif %}>
-          <span style="font-size:1.5rem;line-height:1;">📊</span>
-          <span class="company-name">SERVINFORMACION</span>
+          <img class="company-logo" src="/static/logos/servinformacion.jpg" alt="SERVINFORMACION"/>
         </label>
 
         <label class="company-label">
           <input type="radio" name="company" value="Saving the amazon"
                  {% if request.form.get('company') == 'Saving the amazon' %}checked{% endif %}>
-          <span style="font-size:1.5rem;line-height:1;">🌿</span>
-          <span class="company-name">Saving the amazon</span>
+          <img class="company-logo" src="/static/logos/savin.png" alt="Saving the amazon"/>
         </label>
 
         <label class="company-label">
           <input type="radio" name="company" value="CNID"
                  {% if request.form.get('company') == 'CNID' %}checked{% endif %}>
-          <span style="font-size:1.5rem;line-height:1;">🔬</span>
-          <span class="company-name">CNID</span>
+          <img class="company-logo" src="/static/logos/cnid.jpg" alt="CNID"/>
         </label>
 
         <label class="company-label">
           <input type="radio" name="company" value="ProaIA"
                  {% if request.form.get('company') == 'ProaIA' %}checked{% endif %}>
-          <span style="font-size:1.5rem;line-height:1;">🤖</span>
-          <span class="company-name">ProaIA</span>
+          <img class="company-logo" src="/static/logos/proaia.jpg" alt="ProaIA"/>
         </label>
 
       </div>
