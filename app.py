@@ -752,7 +752,8 @@ def handle_turn(sid: str, payload: dict) -> list:
     if ptype == "text" and value:
         gemini = call_gemini(conv, value)
         if gemini.get("action") == "start_process":
-            ptype_req = gemini["params"].get("process_type", "")
+            params_g  = gemini.get("params") or {}
+            ptype_req = params_g.get("process_type", "")
             if ptype_req in {c["id"] for c in CONNECTORS}:
                 conv.process_type = ptype_req
                 conv.step = conv.STEP_MAP[ptype_req][0]
@@ -763,8 +764,9 @@ def handle_turn(sid: str, payload: dict) -> list:
                 msgs += step_messages(conv)
                 return msgs
         if gemini.get("action") == "download_data":
-            pais_g    = gemini["params"].get("pais") or ""
-            empresa_g = gemini["params"].get("empresa") or ""
+            params_g  = gemini.get("params") or {}
+            pais_g    = params_g.get("pais") or ""
+            empresa_g = params_g.get("empresa") or ""
             feats = GEOJSON_CACHE.get("features", [])
             filtered = [f for f in feats if
                 (not pais_g    or f["properties"].get("pais")    == pais_g) and
@@ -1192,7 +1194,12 @@ def chat():
     """Recibe un turno del usuario y devuelve mensajes del agente."""
     body = request.get_json(force=True, silent=True) or {}
     sid = body.get("sid") or request.headers.get("X-Session-Id", str(uuid.uuid4()))
-    messages = handle_turn(sid, body)
+    try:
+        messages = handle_turn(sid, body)
+    except Exception as exc:
+        import traceback
+        print(f"[chat] error en handle_turn: {exc}\n{traceback.format_exc()}")
+        messages = [{"type": "text", "content": f"⚠️ Error interno: {exc}"}]
     return jsonify({"sid": sid, "messages": messages})
 
 
