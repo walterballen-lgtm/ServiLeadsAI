@@ -161,14 +161,15 @@
   .company-label input { display: none; }
   .company-logo {
     max-width: 130px;
-    max-height: 48px;
+    max-height: 52px;
     width: auto;
     height: auto;
     object-fit: contain;
-    transition: opacity .2s;
+    border-radius: 10px;
+    transition: opacity .2s, transform .2s;
     opacity: 0.9;
   }
-  .company-label:hover .company-logo { opacity: 1; }
+  .company-label:hover .company-logo { opacity: 1; transform: scale(1.05); }
   .company-label:has(input:checked) .company-logo { opacity: 1; }
 
   /* ---- Error ---- */
@@ -272,25 +273,25 @@
         <label class="company-label">
           <input type="radio" name="company" value="SERVINFORMACION" required
                  {% if request.form.get('company') == 'SERVINFORMACION' %}checked{% endif %}>
-          <img class="company-logo" src="/static/logos/servinformacion.png" alt="SERVINFORMACION"/>
+          <img class="company-logo" src="/static/logos/servinformacion.webp" alt="SERVINFORMACION"/>
         </label>
 
         <label class="company-label">
           <input type="radio" name="company" value="Saving the amazon"
                  {% if request.form.get('company') == 'Saving the amazon' %}checked{% endif %}>
-          <img class="company-logo" src="/static/logos/savin.png" alt="Saving the amazon"/>
+          <img class="company-logo" src="/static/logos/saving.png" alt="Saving the amazon"/>
         </label>
 
         <label class="company-label">
           <input type="radio" name="company" value="CNID"
                  {% if request.form.get('company') == 'CNID' %}checked{% endif %}>
-          <img class="company-logo" src="/static/logos/cnid.png" alt="CNID"/>
+          <img class="company-logo" src="/static/logos/cnid.webp" alt="CNID"/>
         </label>
 
         <label class="company-label">
           <input type="radio" name="company" value="ProaIA"
                  {% if request.form.get('company') == 'ProaIA' %}checked{% endif %}>
-          <img class="company-logo" src="/static/logos/proaia.png" alt="ProaIA"/>
+          <img class="company-logo" src="/static/logos/proaia_orig.png" alt="ProaIA"/>
         </label>
 
       </div>

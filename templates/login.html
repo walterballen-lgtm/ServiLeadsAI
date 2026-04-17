@@ -108,13 +108,17 @@
     gap: 14px;
   }
   .brand-logo {
-    width: 64px; height: 64px;
-    background: linear-gradient(135deg, #1f6feb 0%, #58a6ff 50%, #a5d6ff 100%);
-    border-radius: 18px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 30px;
+    width: 110px; height: 110px;
+    border-radius: 24px;
+    overflow: hidden;
     box-shadow: 0 8px 32px rgba(88,166,255,.4), 0 0 0 1px rgba(88,166,255,.2);
     animation: logo-pulse 3s ease-in-out infinite;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-logo img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border-radius: 24px;
   }
   @keyframes logo-pulse {
     0%,100%{ box-shadow: 0 8px 32px rgba(88,166,255,.4), 0 0 0 1px rgba(88,166,255,.2); }
@@ -233,7 +237,7 @@
 
   <!-- Brand -->
   <div class="brand">
-    <div class="brand-logo">🤖</div>
+    <div class="brand-logo"><img src="/static/logo_herramienta.png" alt="ServiLeads AI"/></div>
     <h1>ServiLeads AI</h1>
     <p>Plataforma de extracción de contactos con inteligencia artificial</p>
   </div>
