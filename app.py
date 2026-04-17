@@ -45,7 +45,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 APOLLO_API_KEY = os.environ.get("APOLLO_API_KEY", "")
 LUSHA_API_KEY  = os.environ.get("LUSHA_API_KEY",  "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 # ================================================================
 # GOOGLE OAUTH — configura en Render → Environment Variables
