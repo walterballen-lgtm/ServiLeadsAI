@@ -27,6 +27,14 @@ except ImportError:
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "servi-leads-ai-2024")
+app.config["JSON_AS_ASCII"] = False  # UTF-8 limpio en respuestas JSON
+
+# ================================================================
+# API KEYS — configúralas en Render → Environment Variables
+# (nunca las pongas directamente en el código)
+# ================================================================
+APOLLO_API_KEY = os.environ.get("APOLLO_API_KEY", "")
+LUSHA_API_KEY  = os.environ.get("LUSHA_API_KEY",  "")
 
 
 # ================================================================
@@ -145,7 +153,7 @@ def _load_geojson() -> dict:
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "puntos_empresas", "demo_info")
     if not _SHP_OK:
         return {"type": "FeatureCollection", "features": []}
-    sf = pyshp.Reader(path, encoding="latin-1")
+    sf = pyshp.Reader(path, encoding="cp1252")
     fields = [f[0] for f in sf.fields[1:]]
     features = []
     for shp, rec in zip(sf.shapes(), sf.records()):
@@ -175,10 +183,10 @@ class ConvState:
 
     # Secuencia de pasos por tipo de proceso
     STEP_MAP = {
-        "APOLLO_CONTACT": ["ask_api", "ask_empresas", "ask_cargos", "ask_countries", "confirm"],
-        "APOLLO_ORG":     ["ask_api", "ask_id_org", "confirm"],
-        "LUSHA_CONTACT":  ["ask_api", "ask_empresas", "ask_cargos", "ask_countries", "confirm"],
-        "LUSHA_ORG":      ["ask_api", "ask_id_org", "confirm"],
+        "APOLLO_CONTACT": ["ask_empresas", "ask_cargos", "ask_countries", "confirm"],
+        "APOLLO_ORG":     ["ask_id_org", "confirm"],
+        "LUSHA_CONTACT":  ["ask_empresas", "ask_cargos", "ask_countries", "confirm"],
+        "LUSHA_ORG":      ["ask_id_org", "confirm"],
         # Agrega nuevos procesos aquí
     }
 
@@ -219,7 +227,7 @@ class ConvState:
     def summary_items(self) -> list:
         items = [
             ("Tipo de búsqueda", self.process_type.replace("_", " ").title() if self.process_type else "—"),
-            (f"API Key {self.api_name}", f"{self.api_key[:4]}...{self.api_key[-4:]}" if self.api_key and len(self.api_key) >= 8 else "—"),
+            ("API", f"{self.api_name} ✓ configurada"),
         ]
         if self.empresas_path:
             items.append(("Empresas", f"{self.empresas_count} registros"))
@@ -375,24 +383,17 @@ def handle_turn(sid: str, payload: dict) -> list:
         conversations[sid] = ConvState(sid)
         return welcome_messages()
 
-    # ---------- WELCOME ----------
+    # ---------- INIT / WELCOME ----------
+    if ptype == "init":
+        conv.step = "welcome"
+        return welcome_messages()
+
     if conv.step == "welcome":
         if ptype == "action" and value in {c["id"] for c in CONNECTORS}:
             conv.process_type = value
-            conv.step = "ask_api"
+            conv.step = conv.STEP_MAP[value][0]
             return step_messages(conv)
-        return [_text("Por favor selecciona una de las opciones de arriba. 👆")]
-
-    # ---------- API KEY ----------
-    if conv.step == "ask_api":
-        if ptype == "text" and value:
-            if "APOLLO" in conv.process_type:
-                conv.apollo_api = value
-            else:
-                conv.lusha_api = value
-            conv.advance()
-            return [_text("🔐 API Key guardada correctamente.")] + step_messages(conv)
-        return [_text("Por favor escribe tu API Key en el chat.")]
+        return welcome_messages()
 
     # ---------- CSV EMPRESAS ----------
     if conv.step == "ask_empresas":
@@ -477,7 +478,7 @@ def handle_turn(sid: str, payload: dict) -> list:
             return [_text("Ya hay un proceso en curso. Espera a que termine o escribe *reiniciar* para cancelar y empezar de nuevo.")]
         return welcome_messages()
 
-    return [_text("No entendí tu mensaje. Escribe *reiniciar* para comenzar de nuevo.")]
+    return [_text("No entendí eso. 😊 Escribe *reiniciar* para volver al inicio."), *welcome_messages()]
 
 
 # ================================================================
@@ -534,6 +535,11 @@ def _launch_job(conv: ConvState) -> dict:
     if not connector:
         return {"error": "Tipo de proceso no reconocido"}
 
+    needed_key = APOLLO_API_KEY if "APOLLO" in conv.process_type else LUSHA_API_KEY
+    if not needed_key:
+        api_name = "APOLLO_API_KEY" if "APOLLO" in conv.process_type else "LUSHA_API_KEY"
+        return {"error": f"Variable de entorno {api_name} no configurada en el servidor"}
+
     job_id = str(uuid.uuid4())
     output_dir = os.path.join(conv.upload_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
@@ -550,8 +556,8 @@ def _launch_job(conv: ConvState) -> dict:
     }
 
     data = {
-        "apollo_api":   conv.apollo_api or "",
-        "lusha_api":    conv.lusha_api or "",
+        "apollo_api":   APOLLO_API_KEY,
+        "lusha_api":    LUSHA_API_KEY,
         "paises":       conv.paises,
         "empresas_path": conv.empresas_path,
         "cargos_path":   conv.cargos_path,

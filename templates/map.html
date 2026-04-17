@@ -619,6 +619,7 @@
   .popup-field { font-size: .74rem; color: #c9d1d9; margin-bottom: 4px; display: flex; gap: 5px; align-items: flex-start; word-break: break-all; }
   .popup-field a { color: #58a6ff; text-decoration: none; }
   .popup-field a:hover { text-decoration: underline; }
+  .map-popup > div > div:first-child { border-top: none !important; }
 
   /* ============================================================
      COUNTER badge en config
@@ -676,7 +677,7 @@
 
   <!-- Satélites -->
   <div class="cfg-section">
-    <div class="cfg-label">🛰️ Vista del mapa</div>
+    <div class="cfg-label">🗺️ Fondo del mapa</div>
     <div class="sat-grid" id="sat-grid">
       <!-- generado por JS -->
     </div>
@@ -764,12 +765,12 @@ const TILE_LAYERS = {
     opts: { attribution: '© OpenStreetMap', maxZoom: 19 }
   },
   dark: {
-    label: 'Oscuro', icon: '🌑',
+    label: 'Noche', icon: '🌑',
     url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     opts: { attribution: '© CARTO', maxZoom: 19 }
   },
   light: {
-    label: 'Claro', icon: '☀️',
+    label: 'Día', icon: '☀️',
     url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
     opts: { attribution: '© CARTO', maxZoom: 19 }
   },
@@ -829,23 +830,35 @@ setLayer('dark');
 /* ============================================================
    GEOJSON — Cargar puntos del shapefile
    ============================================================ */
-function buildPopup(p) {
-  const flag  = COUNTRY_FLAGS[p.pais] || '🌍';
-  const phones = (p.telefono || '').split('||').map(s => s.trim()).filter(Boolean);
-  const url   = (p.url || '').trim();
-  const shortUrl = url.includes('linkedin') ? 'Ver LinkedIn' : (url ? 'Ver perfil' : '');
+let pinnedLayer = null;
 
-  return `<div class="map-popup">
-    <div class="popup-header">
-      <div class="popup-empresa">${p.empresa || '—'}</div>
-      <div class="popup-pais">${flag} ${p.pais || ''}</div>
-    </div>
+function buildPersonCard(p) {
+  const phones = (p.telefono || '').split('||').map(s => s.trim()).filter(Boolean);
+  const url = (p.url || '').trim();
+  const shortUrl = url.includes('linkedin') ? 'Ver LinkedIn' : (url ? 'Ver perfil' : '');
+  return `<div style="padding:8px 0;border-top:1px solid rgba(255,255,255,.08);first-child{border-top:none}">
     <div class="popup-nombre">${p.nombre || '—'}</div>
     <div class="popup-cargo">${p.cargo || ''}</div>
-    <hr class="popup-divider">
     ${p.correo  ? `<div class="popup-field"><span>📧</span> ${p.correo}</div>` : ''}
     ${phones.length ? `<div class="popup-field"><span>📞</span> ${phones[0]}</div>` : ''}
     ${shortUrl && url ? `<div class="popup-field"><span>🔗</span> <a href="${url}" target="_blank" rel="noopener">${shortUrl}</a></div>` : ''}
+  </div>`;
+}
+
+function buildGroupPopup(propsList) {
+  const p0 = propsList[0];
+  const flag = COUNTRY_FLAGS[p0.pais] || '🌍';
+  const count = propsList.length;
+  const cards = propsList.map(buildPersonCard).join('');
+  const scrollStyle = count > 2 ? 'max-height:210px;overflow-y:auto;' : '';
+  return `<div class="map-popup">
+    <div class="popup-header">
+      <div class="popup-empresa">${p0.empresa || '—'}</div>
+      <div class="popup-pais">${flag} ${p0.pais || ''}</div>
+    </div>
+    ${count > 1 ? `<div style="font-size:.68rem;color:#7d8590;margin-bottom:4px;">${count} contactos en esta ubicación</div>` : ''}
+    <div style="${scrollStyle}">${cards}</div>
+    ${count > 1 ? `<div style="font-size:.65rem;color:#7d8590;margin-top:4px;text-align:center;">📌 Clic para fijar • desplaza para ver más</div>` : ''}
   </div>`;
 }
 
@@ -860,32 +873,79 @@ fetch('/api/geojson')
 
 function renderGeoLayer(features) {
   if (geoLayer) map.removeLayer(geoLayer);
+  pinnedLayer = null;
   if (!features.length) return;
 
-  geoLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
-    pointToLayer(feature, latlng) {
-      const color = COUNTRY_COLORS[feature.properties.pais] || '#58a6ff';
-      return L.circleMarker(latlng, {
-        radius: 8,
-        fillColor: color,
-        color: '#fff',
-        weight: 2,
-        opacity: 1,
-        fillOpacity: 0.88,
-      });
-    },
-    onEachFeature(feature, layer) {
-      layer.bindPopup(buildPopup(feature.properties), { maxWidth: 310 });
-      layer.on('mouseover', function() {
-        this.setStyle({ radius: 13, weight: 3 });
-        this.openPopup();
-      });
-      layer.on('mouseout', function() {
-        this.setStyle({ radius: 8, weight: 2 });
-        this.closePopup();
-      });
+  // Group overlapping points by rounded coordinates
+  const groups = {};
+  features.forEach(f => {
+    const [lng, lat] = f.geometry.coordinates;
+    const key = `${(+lat).toFixed(4)},${(+lng).toFixed(4)}`;
+    if (!groups[key]) groups[key] = { lat: +lat, lng: +lng, props: [] };
+    groups[key].props.push(f.properties);
+  });
+
+  const layers = [];
+  Object.values(groups).forEach(g => {
+    const color = COUNTRY_COLORS[g.props[0].pais] || '#58a6ff';
+    const count = g.props.length;
+    const marker = L.circleMarker([g.lat, g.lng], {
+      radius: count > 1 ? 10 : 8,
+      fillColor: color,
+      color: '#fff',
+      weight: count > 1 ? 3 : 2,
+      opacity: 1,
+      fillOpacity: 0.88,
+    });
+
+    const popup = L.popup({ maxWidth: 320, autoPan: false })
+      .setContent(buildGroupPopup(g.props));
+    marker.bindPopup(popup);
+
+    let closeTimer = null;
+
+    function scheduleClose() {
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        if (pinnedLayer !== marker) marker.closePopup();
+      }, 350);
     }
-  }).addTo(map);
+
+    marker.on('mouseover', function() {
+      clearTimeout(closeTimer);
+      this.setStyle({ radius: count > 1 ? 14 : 12, weight: 3 });
+      if (pinnedLayer !== this) this.openPopup();
+    });
+    marker.on('mouseout', function() {
+      this.setStyle({ radius: count > 1 ? 10 : 8, weight: count > 1 ? 3 : 2 });
+      scheduleClose();
+    });
+    marker.on('click', function() {
+      if (pinnedLayer === this) {
+        pinnedLayer = null;
+        this.closePopup();
+      } else {
+        if (pinnedLayer) pinnedLayer.closePopup();
+        pinnedLayer = this;
+        this.openPopup();
+      }
+    });
+    marker.on('popupopen', function() {
+      const el = this.getPopup().getElement();
+      if (el) {
+        el.addEventListener('mouseenter', () => clearTimeout(closeTimer));
+        el.addEventListener('mouseleave', () => scheduleClose());
+      }
+    });
+    layers.push(marker);
+  });
+
+  geoLayer = L.layerGroup(layers).addTo(map);
+
+  // Unpin on map click (not on marker)
+  map.off('click.unpin').on('click.unpin', () => {
+    if (pinnedLayer) { pinnedLayer.closePopup(); pinnedLayer = null; }
+  });
 }
 
 
@@ -921,6 +981,7 @@ function buildCountryChips(paises) {
 }
 
 function buildCompanySelect(empresas) {
+  // Initial full list; replaced by updateCompanySelect when country is selected
   const sel = document.getElementById('company-select');
   empresas.forEach(e => {
     const opt = document.createElement('option');
@@ -929,12 +990,30 @@ function buildCompanySelect(empresas) {
   });
 }
 
+
 function applyCountryChip(pais) {
   activeCountry = pais;
+  activeCompany = '';
   document.querySelectorAll('.chip').forEach(c =>
     c.classList.toggle('active', c.dataset.country === pais)
   );
+  updateCompanySelect(pais);
   applyFilters();
+}
+
+function updateCompanySelect(pais) {
+  const sel = document.getElementById('company-select');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Todas las empresas —</option>';
+  const filtered = pais
+    ? allFeatures.filter(f => f.properties.pais === pais)
+    : allFeatures;
+  const seen = new Set();
+  filtered.forEach(f => {
+    const e = f.properties.empresa;
+    if (e && !seen.has(e)) { seen.add(e); const o = document.createElement('option'); o.value = e; o.textContent = e; sel.appendChild(o); }
+  });
+  sel.value = seen.has(current) ? current : '';
 }
 
 function onCompanyChange() {
@@ -971,10 +1050,10 @@ function applyFilters() {
 function clearFilters() {
   activeCountry = '';
   activeCompany = '';
-  document.getElementById('company-select').value = '';
   document.querySelectorAll('.chip').forEach(c =>
     c.classList.toggle('active', c.dataset.country === '')
   );
+  updateCompanySelect('');
   renderGeoLayer(allFeatures);
   updateCount(allFeatures.length, allFeatures.length);
   map.setView([-3, -70], 4);
@@ -996,10 +1075,7 @@ function toggleTheme() {
   isDark = !isDark;
   document.body.classList.toggle('light', !isDark);
   document.getElementById('theme-toggle').classList.toggle('on', !isDark);
-  document.getElementById('theme-label').textContent = isDark ? 'Oscuro' : 'Claro';
-  // Cambiar la capa base automáticamente según el tema
-  if (!isDark && (activeSat === 'dark' || activeSat === 'satellite'))  setLayer('light');
-  if ( isDark && (activeSat === 'light'))                               setLayer('dark');
+  document.getElementById('theme-label').textContent = isDark ? '🌙 Oscuro' : '☀️ Claro';
 }
 
 
