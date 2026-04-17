@@ -317,37 +317,42 @@ _GEMINI_SYSTEM = """\
 Eres ServiLeads AI, asistente de extracción de contactos B2B.
 
 REGLA CRÍTICA: Responde ÚNICAMENTE con un objeto JSON. Sin texto extra antes ni después.
-Formato obligatorio (respeta exactamente los nombres de las claves):
+Formato obligatorio:
 {{"message": "<texto markdown>", "action": "<accion_o_null>", "params": {{}}}}
 
 ACCIONES DISPONIBLES:
-- "start_process"  → Iniciar extracción. params: {{"process_type": "APOLLO_CONTACT"|"APOLLO_ORG"|"LUSHA_CONTACT"|"LUSHA_ORG"}}
-- "download_data"  → Descargar CSV del mapa. params: {{"pais": "Colombia"|"Peru"|"Uruguay"|null, "empresa": "<nombre_o_null>"}}
-- "show_summary"   → Mostrar resumen del mapa. params: {{}}
-- "search_map"     → Buscar en la base de datos. params: {{"query": "<texto>", "field": "nombre"|"empresa"|"cargo"|"correo", "pais": "<pais_o_null>"}}
-- null             → Solo responder con texto
+- "start_process" → Iniciar extracción. params: {{"process_type": "APOLLO_CONTACT"|"APOLLO_ORG"|"LUSHA_CONTACT"|"LUSHA_ORG"}}
+- "download_data" → Descargar CSV. params: {{"pais": "<pais_o_null>", "empresa": "<nombre_o_null>"}}
+- "show_summary"  → Resumen general del mapa. params: {{}}
+- "filter_map"    → Filtrar mapa Y mostrar contactos en chat. params: {{"pais": "<pais_o_null>", "empresa": "<nombre_o_null>"}}
+- "search_map"    → Buscar registro específico. params: {{"query": "<texto>", "field": "nombre"|"empresa"|"cargo"|"correo", "empresa_filter": "<empresa_o_null>", "pais": "<pais_o_null>"}}
+- null            → Solo responder con texto
 
-PROCESOS DE EXTRACCIÓN (archivos Python del servidor):
-- APOLLO_CONTACT  → apollo_script.py  — Busca personas en empresas por cargo usando Apollo.io. Requiere: CSV empresas, CSV cargos, países destino. Produce: nombre, cargo, correo, teléfono, LinkedIn.
-- APOLLO_ORG      → apollo_org.py     — Enriquece organizaciones por ID en Apollo. Requiere: CSV de IDs de organización.
-- LUSHA_CONTACT   → lusha_script.py   — Igual que APOLLO_CONTACT pero con API Lusha (mayor cobertura LATAM). Requiere: CSV empresas, CSV cargos, países.
+CUÁNDO USAR CADA ACCIÓN:
+- "filter_map": el usuario pregunta por contactos DE un país o empresa ("qué tengo en Colombia", "contactos de Alpina"). Filtra el mapa visualmente Y muestra resumen en chat.
+- "search_map": el usuario busca un registro específico ("existe Manuel", "gerente de Alpina", "busca la empresa RAMO"). Usa empresa_filter para limitar a una empresa concreta.
+- "download_data": el usuario quiere descargar el CSV.
+- "start_process": el usuario quiere extraer contactos nuevos con Apollo/Lusha.
+
+PROCESOS DE EXTRACCIÓN:
+- APOLLO_CONTACT  → apollo_script.py  — Busca personas por cargo usando Apollo.io. Requiere: CSV empresas, CSV cargos, países.
+- APOLLO_ORG      → apollo_org.py     — Enriquece organizaciones por ID Apollo. Requiere: CSV de IDs.
+- LUSHA_CONTACT   → lusha_script.py   — Igual que APOLLO_CONTACT con API Lusha (mejor cobertura LATAM).
 - LUSHA_ORG       → lusha_org.py      — Enriquece organizaciones con Lusha. Requiere: CSV de IDs.
 
-BASE DE DATOS DEL MAPA (shapefile demo_info — cargado en memoria):
+BASE DE DATOS DEL MAPA:
 {map_summary}
-Campos del shapefile: pais, empresa, nombre, cargo, correo, telefono, url
+Campos: pais, empresa, nombre, cargo, correo, telefono, url
 
-ESTADO DE LA CONVERSACIÓN:
+ESTADO CONVERSACIÓN:
 {conv_state}
 
-REGLAS DE COMPORTAMIENTO:
-- Si el usuario pregunta si alguien existe o pide buscar por nombre → action "search_map", field="nombre"
-- Si pregunta por una empresa en la base → field="empresa"
-- Si pregunta por un cargo → field="cargo"
-- Si no menciona país al buscar → pais=null, y en el message pregunta si quiere filtrar por país
-- Si el usuario quiere extraer/buscar contactos con Apollo o Lusha → action "start_process"
-- Si quiere descargar datos del mapa → action "download_data"
-- Sé conciso. Usa **negritas** para datos importantes. No repitas el menú de procesos.\
+REGLAS:
+- "gerente de Alpina" → search_map, query="gerente", field="cargo", empresa_filter="Alpina"
+- "busca empresa RAMO" → search_map, query="RAMO", field="empresa", empresa_filter=null
+- "existe Manuel" → search_map, query="Manuel", field="nombre", empresa_filter=null
+- "contactos en Colombia" → filter_map, pais="Colombia"
+- Sé conciso. Usa **negritas** para datos importantes.\
 """
 
 
@@ -458,33 +463,55 @@ def call_gemini(conv: "ConvState", user_message: str) -> dict:
 
 
 # ================================================================
-# BÚSQUEDA EN MAPA
+# BÚSQUEDA Y FILTRO EN MAPA
 # ================================================================
-def resp_search_map(query: str, field: str = "nombre", pais: str = "") -> list:
+def resp_search_map(query: str, field: str = "nombre", empresa_filter: str = "", pais: str = "") -> list:
     feats = GEOJSON_CACHE.get("features", [])
     q = query.lower().strip()
-    valid_fields = {"nombre", "empresa", "cargo", "correo", "url", "telefono"}
-    if field not in valid_fields:
+    if field not in {"nombre", "empresa", "cargo", "correo", "url", "telefono"}:
         field = "nombre"
 
+    # Si hay filtro de empresa, verificar primero que exista en la base
+    if empresa_filter:
+        ef = empresa_filter.lower()
+        empresa_exists = any(ef in str(f["properties"].get("empresa", "")).lower() for f in feats)
+        if not empresa_exists:
+            return [_text(f"No tienes la empresa **{empresa_filter}** en tu base de datos.")]
+
+    # Buscar con todos los filtros
     matches = [
         f for f in feats
         if q in str(f["properties"].get(field, "")).lower()
-        and (not pais or f["properties"].get("pais", "").lower() == pais.lower())
+        and (not pais           or f["properties"].get("pais", "").lower() == pais.lower())
+        and (not empresa_filter or empresa_filter.lower() in str(f["properties"].get("empresa", "")).lower())
     ]
 
-    scope = f" en **{pais}**" if pais else ""
     if not matches:
-        countries = sorted({f["properties"].get("pais", "") for f in feats if f["properties"].get("pais")})
-        return [
-            _text(f"No encontré ningún registro con **\"{query}\"** en el campo *{field}*{scope}."),
-            _replies(
-                [{"label": f"🌍 Buscar en todos los países", "value": f"SEARCH:{field}:{query}:ALL"}] +
-                [{"label": f"{_FLAGS.get(c, '🌍')} Buscar en {c}", "value": f"SEARCH:{field}:{query}:{c}"}
-                 for c in countries]
-            ),
+        # ¿Existe en otros países?
+        matches_other = [
+            f for f in feats
+            if q in str(f["properties"].get(field, "")).lower()
+            and (not empresa_filter or empresa_filter.lower() in str(f["properties"].get("empresa", "")).lower())
         ]
+        if matches_other and pais:
+            countries = sorted({f["properties"].get("pais", "") for f in matches_other if f["properties"].get("pais")})
+            return [
+                _text(f"No encontré **\"{query}\"** en {field} en **{pais}**, pero sí en: {', '.join(countries)}."),
+                _replies(
+                    [{"label": f"{_FLAGS.get(c,'🌍')} Buscar en {c}", "value": f"SEARCH:{field}:{query}:{empresa_filter}:{c}"}
+                     for c in countries] +
+                    [{"label": "🌍 Ver en todos los países", "value": f"SEARCH:{field}:{query}:{empresa_filter}:ALL"}]
+                ),
+            ]
+        if empresa_filter:
+            return [_text(f"La empresa **{empresa_filter}** existe en tu base, pero no tiene ningún contacto con **\"{query}\"** como {field}.")]
+        scope = f" en **{pais}**" if pais else ""
+        return [_text(f"No encontré ningún registro con **\"{query}\"** en el campo *{field}*{scope}.")]
 
+    # Mostrar resultados
+    scope = ""
+    if empresa_filter: scope += f" en **{empresa_filter}**"
+    if pais:           scope += f" ({pais})"
     lines = [f"🔍 **{len(matches)} resultado(s)** para \"{query}\"{scope}:\n"]
     for feat in matches[:12]:
         p = feat["properties"]
@@ -495,12 +522,50 @@ def resp_search_map(query: str, field: str = "nombre", pais: str = "") -> list:
         lines.append(f"\n_...y {len(matches) - 12} resultados más._")
 
     msgs = [_text("\n".join(lines))]
+    # Ofrecer buscar en otros países si hay resultados fuera del filtro actual
     if pais:
-        cnt_all = sum(1 for f in feats if q in str(f["properties"].get(field, "")).lower())
-        if cnt_all > len(matches):
-            msgs.append(_replies([
-                {"label": f"🌍 Ver también en otros países ({cnt_all} total)", "value": f"SEARCH:{field}:{query}:ALL"}
-            ]))
+        total = sum(1 for f in feats
+                    if q in str(f["properties"].get(field, "")).lower()
+                    and (not empresa_filter or empresa_filter.lower() in str(f["properties"].get("empresa","")).lower()))
+        if total > len(matches):
+            msgs.append(_replies([{"label": f"🌍 Ver en todos los países ({total} total)", "value": f"SEARCH:{field}:{query}:{empresa_filter}:ALL"}]))
+    return msgs
+
+
+def resp_filter_map(pais: str = "", empresa: str = "", extra_msg: str = "") -> list:
+    """Filtra el mapa visualmente y muestra resumen de contactos en el chat."""
+    from collections import Counter
+    feats = GEOJSON_CACHE.get("features", [])
+    filtered = [f for f in feats if
+        (not pais    or f["properties"].get("pais")    == pais) and
+        (not empresa or f["properties"].get("empresa") == empresa)]
+
+    scope = f"**{pais}**" if pais else f"**{empresa}**" if empresa else "todos los países"
+    map_msg = {"type": "map_action", "action": "filter", "pais": pais or None, "empresa": empresa or None}
+
+    if not filtered:
+        return [_text(f"No tienes registros en {scope} en tu base de datos."), map_msg]
+
+    by_empresa = Counter(f["properties"].get("empresa", "?") for f in filtered)
+    by_cargo   = Counter(f["properties"].get("cargo",   "?") for f in filtered)
+
+    lines = [f"📊 **{len(filtered)} contactos** en {scope}:\n"]
+    lines.append("**Por empresa:**")
+    for emp, cnt in sorted(by_empresa.items(), key=lambda x: -x[1])[:5]:
+        lines.append(f"  🏢 {emp}: {cnt}")
+    top_cargos = [c for c, _ in sorted(by_cargo.items(), key=lambda x: -x[1]) if c and c != "?" ][:4]
+    if top_cargos:
+        lines.append(f"\n**Cargos frecuentes:** {', '.join(top_cargos)}")
+
+    qs, lp = [], []
+    if pais:    qs.append(f"pais={pais}");       lp.append(pais)
+    if empresa: qs.append(f"empresa={empresa}"); lp.append(empresa)
+    url   = "/api/download-map?" + "&".join(qs) if qs else "/api/download-map"
+    label = " — ".join(lp) if lp else "todos"
+
+    msgs = []
+    if extra_msg: msgs.append(_text(extra_msg))
+    msgs += [_text("\n".join(lines)), map_msg, _link(url, f"⬇️ Descargar {label} ({len(filtered)} registros)")]
     return msgs
 
 
@@ -874,16 +939,17 @@ def handle_turn(sid: str, payload: dict) -> list:
             _upload(field, f"📎 Reemplazar CSV de {label_map.get(field, field)}", "Primera columna = dato esperado"),
         ]
 
-    # Búsqueda en mapa desde quick reply
+    # Búsqueda en mapa desde quick reply  SEARCH:field:query:empresa_filter:pais
     if ptype == "action" and value.startswith("SEARCH:"):
-        parts = value.split(":", 3)
-        # SEARCH:field:query:pais
-        s_field = parts[1] if len(parts) > 1 else "nombre"
-        s_query = parts[2] if len(parts) > 2 else ""
-        s_pais  = parts[3] if len(parts) > 3 else ""
-        if s_pais == "ALL": s_pais = ""
+        parts = value.split(":", 4)
+        s_field   = parts[1] if len(parts) > 1 else "nombre"
+        s_query   = parts[2] if len(parts) > 2 else ""
+        s_empresa = parts[3] if len(parts) > 3 else ""
+        s_pais    = parts[4] if len(parts) > 4 else ""
+        if s_pais    == "ALL": s_pais    = ""
+        if s_empresa == "ALL": s_empresa = ""
         if s_query:
-            return resp_search_map(s_query, s_field, s_pais)
+            return resp_search_map(s_query, s_field, s_empresa, s_pais)
 
     # Intención libre (texto) — Gemini primero, fallback a keywords
     if ptype == "text" and value:
@@ -940,14 +1006,20 @@ def handle_turn(sid: str, payload: dict) -> list:
             if msg_txt: msgs.insert(0, _text(msg_txt))
             return msgs
 
+        if action == "filter_map":
+            pais_g    = params.get("pais")    or ""
+            empresa_g = params.get("empresa") or ""
+            return resp_filter_map(pais_g, empresa_g, msg_txt or "")
+
         if action == "search_map":
-            s_query = params.get("query", "").strip()
-            s_field = params.get("field", "nombre")
-            s_pais  = params.get("pais") or ""
+            s_query   = params.get("query", "").strip()
+            s_field   = params.get("field", "nombre")
+            s_empresa = params.get("empresa_filter") or ""
+            s_pais    = params.get("pais") or ""
             if s_query:
                 msgs = []
                 if msg_txt: msgs.append(_text(msg_txt))
-                return msgs + resp_search_map(s_query, s_field, s_pais)
+                return msgs + resp_search_map(s_query, s_field, s_empresa, s_pais)
 
         # Gemini respondió con solo texto (action=null)
         if msg_txt:

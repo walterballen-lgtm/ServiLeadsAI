@@ -1478,11 +1478,21 @@ function renderMessage(msg) {
 
     /* ---- Acción de mapa (integración chat ↔ mapa) ---- */
     case 'map_action': {
-      if (msg.action === 'filter' && msg.pais) {
-        // Actualizar chip del país en el panel config
-        applyCountryChip(msg.pais);
+      if (msg.action === 'filter') {
+        if (msg.pais) {
+          applyCountryChip(msg.pais);           // filtra país y actualiza empresa select
+          if (msg.empresa) {
+            activeCompany = msg.empresa;
+            document.getElementById('company-select').value = msg.empresa;
+            applyFilters();
+          }
+        } else if (msg.empresa) {
+          activeCompany = msg.empresa;
+          document.getElementById('company-select').value = msg.empresa;
+          applyFilters();
+        }
       }
-      return null; // mensaje invisible
+      return null;
     }
 
     default: return null;
