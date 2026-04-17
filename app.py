@@ -360,16 +360,43 @@ def _build_gemini_prompt(conv: "ConvState") -> str:
     return _GEMINI_SYSTEM.format(map_summary=summary, conv_state=step_info)
 
 
+def _extract_json(text: str) -> dict:
+    """Extrae el primer objeto JSON del texto de Gemini de forma robusta."""
+    import re
+    # Buscar bloque ```json ... ``` o ``` ... ```
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if m:
+        raw = m.group(1)
+    else:
+        # Buscar el primer { ... } en el texto
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if not m:
+            return {}
+        raw = m.group(0)
+    try:
+        result = json.loads(raw)
+        if not isinstance(result, dict):
+            return {}
+        # Normalizar: eliminar comillas extra en claves si las hay
+        clean = {}
+        for k, v in result.items():
+            clean[k.strip('"').strip("'")] = v
+        return clean
+    except Exception:
+        return {}
+
+
 def call_gemini(conv: "ConvState", user_message: str) -> dict:
     """Llama a Gemini y devuelve {message, action, params}. Fallback en error."""
+    _empty = {"message": None, "action": None, "params": {}}
     if not GEMINI_API_KEY:
-        return {"message": None, "action": None, "params": {}}
+        return _empty
 
     conv.gemini_history.append({"role": "user", "parts": [{"text": user_message}]})
 
     body = {
         "system_instruction": {"parts": [{"text": _build_gemini_prompt(conv)}]},
-        "contents": conv.gemini_history[-20:],  # últimos 20 turnos
+        "contents": conv.gemini_history[-20:],
         "generationConfig": {"temperature": 0.4, "maxOutputTokens": 512},
     }
     try:
@@ -377,19 +404,21 @@ def call_gemini(conv: "ConvState", user_message: str) -> dict:
             GEMINI_URL, params={"key": GEMINI_API_KEY},
             json=body, timeout=15
         )
-        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        # Extraer JSON aunque haya ```json ... ```
-        if "```" in text:
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        result = json.loads(text)
-        conv.gemini_history.append({"role": "model", "parts": [{"text": text}]})
-        return result
+        raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        result = _extract_json(raw_text)
+        if not result:
+            raise ValueError(f"No se pudo extraer JSON de: {raw_text[:200]}")
+        conv.gemini_history.append({"role": "model", "parts": [{"text": raw_text}]})
+        return {
+            "message": result.get("message") or None,
+            "action":  result.get("action")  or None,
+            "params":  result.get("params")  or {},
+        }
     except Exception as e:
         print(f"[gemini] error: {e}")
-        conv.gemini_history.pop()  # quitar turno que falló
-        return {"message": None, "action": None, "params": {}}
+        if conv.gemini_history and conv.gemini_history[-1]["role"] == "user":
+            conv.gemini_history.pop()
+        return _empty
 
 
 def leer_csv_primera_columna(path: str) -> list:
