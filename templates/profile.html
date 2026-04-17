@@ -161,10 +161,16 @@
   .company-label input { display: none; }
   .company-icon { font-size: 26px; line-height: 1; display:flex;align-items:center;justify-content:center; }
   .company-icon img {
-    width: 44px; height: 44px;
+    width: 48px; height: 48px;
     object-fit: contain;
     border-radius: 8px;
-    filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
+    mix-blend-mode: luminosity;
+    filter: brightness(1.1) contrast(1.05);
+    transition: filter .2s, mix-blend-mode .2s;
+  }
+  .company-label:has(input:checked) .company-icon img {
+    mix-blend-mode: normal;
+    filter: brightness(1) contrast(1);
   }
   .company-name {
     font-size: .74rem; font-weight: 600;
@@ -273,9 +279,7 @@
           <input type="radio" name="company" value="SERVINFORMACION" required
                  {% if request.form.get('company') == 'SERVINFORMACION' %}checked{% endif %}>
           <span class="company-icon">
-            <img src="https://logo.clearbit.com/servinformacion.com"
-                 alt="SERVINFORMACION"
-                 onerror="this.style.display='none';this.parentElement.innerHTML='📊';">
+            <img src="/static/logos/servinformacion.jpg" alt="SERVINFORMACION">
           </span>
           <span class="company-name">SERVINFORMACION</span>
         </label>
@@ -283,7 +287,9 @@
         <label class="company-label">
           <input type="radio" name="company" value="Savin the amazon"
                  {% if request.form.get('company') == 'Savin the amazon' %}checked{% endif %}>
-          <span class="company-icon">🌿</span>
+          <span class="company-icon">
+            <img src="/static/logos/savin.png" alt="Savin the amazon">
+          </span>
           <span class="company-name">Savin the amazon</span>
         </label>
 
@@ -291,9 +297,7 @@
           <input type="radio" name="company" value="CNID"
                  {% if request.form.get('company') == 'CNID' %}checked{% endif %}>
           <span class="company-icon">
-            <img src="https://logo.clearbit.com/cnid.co"
-                 alt="CNID"
-                 onerror="this.style.display='none';this.parentElement.innerHTML='🔬';">
+            <img src="/static/logos/cnid.jpg" alt="CNID">
           </span>
           <span class="company-name">CNID</span>
         </label>
@@ -301,7 +305,9 @@
         <label class="company-label">
           <input type="radio" name="company" value="proaia"
                  {% if request.form.get('company') == 'proaia' %}checked{% endif %}>
-          <span class="company-icon">🤖</span>
+          <span class="company-icon">
+            <img src="/static/logos/proaia.jpg" alt="proaia">
+          </span>
           <span class="company-name">proaia</span>
         </label>
 
