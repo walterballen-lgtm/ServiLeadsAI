@@ -11,7 +11,7 @@ PARA AGREGAR UN NUEVO CONECTOR:
 =============================================================
 """
 
-import os, uuid, queue, threading, tempfile, csv, secrets, json
+import os, uuid, queue, threading, tempfile, csv, secrets
 import requests
 from functools import wraps
 from urllib.parse import urlencode
@@ -42,10 +42,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 # API KEYS — configúralas en Render → Environment Variables
 # (nunca las pongas directamente en el código)
 # ================================================================
-APOLLO_API_KEY  = os.environ.get("APOLLO_API_KEY", "")
-LUSHA_API_KEY   = os.environ.get("LUSHA_API_KEY",  "")
-GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_URL      = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+APOLLO_API_KEY = os.environ.get("APOLLO_API_KEY", "")
+LUSHA_API_KEY  = os.environ.get("LUSHA_API_KEY",  "")
 
 # ================================================================
 # GOOGLE OAUTH — configura en Render → Environment Variables
@@ -242,7 +240,6 @@ class ConvState:
         self.id_org_count: int = 0
         self.job_id: str = None
         self.upload_dir = tempfile.mkdtemp(prefix=f"conv_{sid[:8]}_")
-        self.gemini_history: list = []
         self.pending_confirm_file: dict = None  # {field, path, header, count}
 
     @property
@@ -308,117 +305,6 @@ def _get_csv_header(path: str) -> str:
             continue
     return ""
 
-
-# ---- Gemini AI ----
-
-_GEMINI_SYSTEM = """Eres ServiLeads AI, asistente de extracción de contactos B2B.
-Responde SIEMPRE con JSON válido y sin texto fuera del bloque JSON. Formato:
-{"message": "<texto markdown para el usuario>", "action": "<acción o null>", "params": {}}
-
-Acciones disponibles:
-- "start_process": iniciar flujo guiado. params: {"process_type": "APOLLO_CONTACT"|"APOLLO_ORG"|"LUSHA_CONTACT"|"LUSHA_ORG"}
-- "download_data": descargar datos del mapa. params: {"pais": "<país o null>", "empresa": "<empresa o null>"}
-- "show_summary": mostrar resumen de datos del mapa
-- null: solo responder con texto
-
-Procesos disponibles:
-- APOLLO_CONTACT: Extraer contactos (personas) de empresas usando Apollo. Requiere CSV empresas + CSV cargos + países.
-- APOLLO_ORG: Enriquecer organizaciones con Apollo. Requiere CSV de IDs de organización.
-- LUSHA_CONTACT: Extraer contactos con Lusha. Requiere CSV empresas + CSV cargos + países.
-- LUSHA_ORG: Enriquecer organizaciones con Lusha. Requiere CSV de IDs.
-
-Datos del mapa disponibles (shapefile cargado):
-{map_summary}
-
-Estado actual de la conversación:
-{conv_state}
-
-Reglas:
-- Sé breve y directo. Usa markdown para negritas.
-- Si el usuario quiere buscar/extraer contactos, usa action "start_process".
-- Si el usuario quiere descargar datos del mapa, usa action "download_data".
-- Si el usuario está en medio de un flujo guiado (step != welcome), recuérdale que está en proceso.
-- No inventes datos ni resultados que no existen."""
-
-
-def _build_gemini_prompt(conv: "ConvState") -> str:
-    feats = GEOJSON_CACHE.get("features", [])
-    from collections import Counter
-    by_pais = Counter(f["properties"].get("pais", "?") for f in feats)
-    summary = f"{len(feats)} registros totales. " + ", ".join(f"{p}: {c}" for p, c in sorted(by_pais.items(), key=lambda x: -x[1]))
-
-    step_info = f"step={conv.step}"
-    if conv.process_type:
-        step_info += f", proceso={conv.process_type}"
-    if conv.empresas_count:
-        step_info += f", empresas={conv.empresas_count}"
-    if conv.cargos_count:
-        step_info += f", cargos={conv.cargos_count}"
-    if conv.paises_names:
-        step_info += f", países={conv.paises_names}"
-
-    return _GEMINI_SYSTEM.format(map_summary=summary, conv_state=step_info)
-
-
-def _extract_json(text: str) -> dict:
-    """Extrae el primer objeto JSON del texto de Gemini de forma robusta."""
-    import re
-    # Buscar bloque ```json ... ``` o ``` ... ```
-    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if m:
-        raw = m.group(1)
-    else:
-        # Buscar el primer { ... } en el texto
-        m = re.search(r"\{.*\}", text, re.DOTALL)
-        if not m:
-            return {}
-        raw = m.group(0)
-    try:
-        result = json.loads(raw)
-        if not isinstance(result, dict):
-            return {}
-        # Normalizar: eliminar comillas extra en claves si las hay
-        clean = {}
-        for k, v in result.items():
-            clean[k.strip('"').strip("'")] = v
-        return clean
-    except Exception:
-        return {}
-
-
-def call_gemini(conv: "ConvState", user_message: str) -> dict:
-    """Llama a Gemini y devuelve {message, action, params}. Fallback en error."""
-    _empty = {"message": None, "action": None, "params": {}}
-    if not GEMINI_API_KEY:
-        return _empty
-
-    conv.gemini_history.append({"role": "user", "parts": [{"text": user_message}]})
-
-    body = {
-        "system_instruction": {"parts": [{"text": _build_gemini_prompt(conv)}]},
-        "contents": conv.gemini_history[-20:],
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 512},
-    }
-    try:
-        resp = requests.post(
-            GEMINI_URL, params={"key": GEMINI_API_KEY},
-            json=body, timeout=15
-        )
-        raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-        result = _extract_json(raw_text)
-        if not result:
-            raise ValueError(f"No se pudo extraer JSON de: {raw_text[:200]}")
-        conv.gemini_history.append({"role": "model", "parts": [{"text": raw_text}]})
-        return {
-            "message": result.get("message") or None,
-            "action":  result.get("action")  or None,
-            "params":  result.get("params")  or {},
-        }
-    except Exception as e:
-        print(f"[gemini] error: {e}")
-        if conv.gemini_history and conv.gemini_history[-1]["role"] == "user":
-            conv.gemini_history.pop()
-        return _empty
 
 
 def leer_csv_primera_columna(path: str) -> list:
@@ -717,15 +603,15 @@ def handle_turn(sid: str, payload: dict) -> list:
     ptype = payload.get("type", "text")
     value = str(payload.get("value", "")).strip()
 
-    # Recarga de página → saludo sin menú (Gemini lo guía)
+    # Recarga de página → saludo + menú
     if ptype == "init":
         conv.step = "welcome"
-        return [_text("¡Hola! 👋 Soy **ServiLeads AI**. Puedo extraer contactos B2B, mostrarte los datos del mapa o ayudarte a descargar registros. ¿En qué te puedo ayudar hoy?")]
+        return resp_greeting() + [_process_menu()]
 
     # Reinicio explícito
     if ptype == "text" and value.lower() in RESET_WORDS:
         conversations[sid] = ConvState(sid)
-        return [_text("↩️ ¡Listo, empezamos de nuevo! ¿En qué te puedo ayudar?")]
+        return [_text("↩️ ¡Listo, empezamos de nuevo!")] + resp_greeting()
 
     # Botones de descarga generados dinámicamente
     if ptype == "action" and value.startswith("DOWNLOAD_"):
@@ -777,51 +663,8 @@ def handle_turn(sid: str, payload: dict) -> list:
             _upload(field, f"📎 Reemplazar CSV de {label_map.get(field, field)}", "Primera columna = dato esperado"),
         ]
 
-    # Intención libre (texto) — Gemini primero, fallback a keywords
+    # Intención libre (texto)
     if ptype == "text" and value:
-        gemini = call_gemini(conv, value)
-        if gemini.get("action") == "start_process":
-            params_g  = gemini.get("params") or {}
-            ptype_req = params_g.get("process_type", "")
-            if ptype_req in {c["id"] for c in CONNECTORS}:
-                conv.process_type = ptype_req
-                conv.step = conv.STEP_MAP[ptype_req][0]
-                conn = next(c for c in CONNECTORS if c["id"] == ptype_req)
-                msgs = []
-                if gemini.get("message"):
-                    msgs.append(_text(gemini["message"]))
-                msgs += step_messages(conv)
-                return msgs
-        if gemini.get("action") == "download_data":
-            params_g  = gemini.get("params") or {}
-            pais_g    = params_g.get("pais") or ""
-            empresa_g = params_g.get("empresa") or ""
-            feats = GEOJSON_CACHE.get("features", [])
-            filtered = [f for f in feats if
-                (not pais_g    or f["properties"].get("pais")    == pais_g) and
-                (not empresa_g or f["properties"].get("empresa") == empresa_g)]
-            if filtered:
-                params_qs, label_parts = [], []
-                if pais_g:    params_qs.append(f"pais={pais_g}");       label_parts.append(pais_g)
-                if empresa_g: params_qs.append(f"empresa={empresa_g}"); label_parts.append(empresa_g)
-                url   = "/api/download-map?" + "&".join(params_qs) if params_qs else "/api/download-map"
-                label = " — ".join(label_parts) if label_parts else "todos"
-                msgs = []
-                if gemini.get("message"):
-                    msgs.append(_text(gemini["message"]))
-                msgs.append(_link(url, f"⬇️ Descargar {label} ({len(filtered)} registros)"))
-                return msgs
-            else:
-                return resp_download(value, conv)
-        if gemini.get("action") == "show_summary":
-            msgs = resp_show_data(conv)
-            if gemini.get("message"):
-                msgs.insert(0, _text(gemini["message"]))
-            return msgs
-        if gemini.get("message"):
-            return [_text(gemini["message"])] + _mid_flow_note(conv)
-
-        # Fallback a keywords si Gemini falló
         intent = detect_intent(value)
         if intent == "greeting": return resp_greeting()
         if intent == "help":     return resp_help(conv)
@@ -934,7 +777,7 @@ def handle_turn(sid: str, payload: dict) -> list:
             return [_text("🚀 ¡Búsqueda iniciada! Los logs aparecen en tiempo real..."), _stream(conv.job_id)]
         if ptype == "action" and value == "RESTART":
             conversations[sid] = ConvState(sid)
-            return [_text("↩️ Búsqueda cancelada. ¿En qué más te puedo ayudar?")]
+            return [_text("↩️ Búsqueda cancelada.")] + resp_greeting()
         return [_text("Revisa el resumen y haz clic en **Iniciar búsqueda** cuando estés listo."),
                 _summary(conv.summary_items())]
 
@@ -943,7 +786,7 @@ def handle_turn(sid: str, payload: dict) -> list:
             return [_text("Hay un proceso en curso. Escribe *reiniciar* para cancelar y empezar de nuevo.")]
         return resp_greeting()
 
-    # Fallback: responde pero no repite un menú cerrado
+    # Fallback
     if ptype == "text" and value:
         return [_text(
             "No estoy seguro de entenderte, pero puedo ayudarte con:\n\n"
@@ -953,7 +796,7 @@ def handle_turn(sid: str, payload: dict) -> list:
             "• **Conocer los procesos** — escribe *'describe Apollo'*"
         )]
 
-    return resp_greeting()
+    return resp_greeting() + [_process_menu()]
 
 
 # ================================================================
