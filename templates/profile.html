@@ -165,16 +165,14 @@
     width: auto;
     height: auto;
     object-fit: contain;
-    border-radius: 6px;
-    background: #fff;
-    padding: 4px 8px;
-    opacity: 0.85;
-    transition: opacity .2s, box-shadow .2s;
+    filter: brightness(0) invert(1);
+    opacity: 0.75;
+    transition: opacity .2s, filter .2s;
   }
   .company-label:hover .company-logo { opacity: 1; }
   .company-label:has(input:checked) .company-logo {
+    filter: brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(190deg);
     opacity: 1;
-    box-shadow: 0 0 0 2px var(--accent);
   }
 
   /* ---- Error ---- */
@@ -278,7 +276,7 @@
         <label class="company-label">
           <input type="radio" name="company" value="SERVINFORMACION" required
                  {% if request.form.get('company') == 'SERVINFORMACION' %}checked{% endif %}>
-          <img class="company-logo" src="/static/logos/servinformacion.jpg" alt="SERVINFORMACION"/>
+          <img class="company-logo" src="/static/logos/servinformacion.png" alt="SERVINFORMACION"/>
         </label>
 
         <label class="company-label">
@@ -290,13 +288,13 @@
         <label class="company-label">
           <input type="radio" name="company" value="CNID"
                  {% if request.form.get('company') == 'CNID' %}checked{% endif %}>
-          <img class="company-logo" src="/static/logos/cnid.jpg" alt="CNID"/>
+          <img class="company-logo" src="/static/logos/cnid.png" alt="CNID"/>
         </label>
 
         <label class="company-label">
           <input type="radio" name="company" value="ProaIA"
                  {% if request.form.get('company') == 'ProaIA' %}checked{% endif %}>
-          <img class="company-logo" src="/static/logos/proaia.jpg" alt="ProaIA"/>
+          <img class="company-logo" src="/static/logos/proaia.png" alt="ProaIA"/>
         </label>
 
       </div>
