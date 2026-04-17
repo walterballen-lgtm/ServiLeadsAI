@@ -427,7 +427,11 @@ def call_gemini(conv: "ConvState", user_message: str) -> dict:
             empty["_error"] = f"Gemini sin candidatos. Respuesta: {str(raw)[:400]}"
             return empty
 
-        raw_text = candidates[0]["content"]["parts"][0]["text"]
+        raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text") or ""
+        if not raw_text:
+            conv.gemini_history.pop()
+            empty["_error"] = f"Gemini devolvió texto vacío. Candidato: {str(candidates[0])[:300]}"
+            return empty
         result, parse_error = _extract_json(raw_text)
 
         if parse_error:
