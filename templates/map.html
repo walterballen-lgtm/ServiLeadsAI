@@ -700,9 +700,9 @@
   <!-- Filtro por país -->
   <div class="cfg-section">
     <div class="cfg-label">🌍 Filtrar por país</div>
-    <div class="chips" id="country-chips">
-      <!-- generado por JS -->
-    </div>
+    <select class="styled-select" id="country-select" onchange="onCountryChange()">
+      <option value="">— Todos los países —</option>
+    </select>
   </div>
 
   <!-- Filtro por empresa -->
@@ -969,33 +969,21 @@ function renderGeoLayer(features) {
 fetch('/api/filters')
   .then(r => r.json())
   .then(({ paises, empresas }) => {
-    buildCountryChips(paises);
+    buildCountrySelect(paises);
     buildCompanySelect(empresas);
   });
 
-function buildCountryChips(paises) {
-  const wrap = document.getElementById('country-chips');
-  wrap.innerHTML = '';
-  // "Todos"
-  const all = document.createElement('button');
-  all.className = 'chip active';
-  all.dataset.country = '';
-  all.textContent = '🌍 Todos';
-  all.onclick = () => applyCountryChip('');
-  wrap.appendChild(all);
-  // Por país
+function buildCountrySelect(paises) {
+  const sel = document.getElementById('country-select');
   paises.forEach(p => {
-    const btn = document.createElement('button');
-    btn.className = 'chip';
-    btn.dataset.country = p;
-    btn.textContent = (COUNTRY_FLAGS[p] || '') + ' ' + p;
-    btn.onclick = () => applyCountryChip(p);
-    wrap.appendChild(btn);
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = (COUNTRY_FLAGS[p] || '') + ' ' + p;
+    sel.appendChild(opt);
   });
 }
 
 function buildCompanySelect(empresas) {
-  // Initial full list; replaced by updateCompanySelect when country is selected
   const sel = document.getElementById('company-select');
   empresas.forEach(e => {
     const opt = document.createElement('option');
@@ -1004,13 +992,15 @@ function buildCompanySelect(empresas) {
   });
 }
 
+function onCountryChange() {
+  const pais = document.getElementById('country-select').value;
+  applyCountryChip(pais);
+}
 
 function applyCountryChip(pais) {
   activeCountry = pais;
   activeCompany = '';
-  document.querySelectorAll('.chip').forEach(c =>
-    c.classList.toggle('active', c.dataset.country === pais)
-  );
+  document.getElementById('country-select').value = pais;
   updateCompanySelect(pais);
   applyFilters();
 }
@@ -1064,9 +1054,8 @@ function applyFilters() {
 function clearFilters() {
   activeCountry = '';
   activeCompany = '';
-  document.querySelectorAll('.chip').forEach(c =>
-    c.classList.toggle('active', c.dataset.country === '')
-  );
+  document.getElementById('country-select').value = '';
+  document.getElementById('company-select').value = '';
   updateCompanySelect('');
   renderGeoLayer(allFeatures);
   updateCount(allFeatures.length, allFeatures.length);
