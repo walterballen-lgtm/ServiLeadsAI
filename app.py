@@ -512,23 +512,37 @@ def resp_search_map(query: str, field: str = "nombre", empresa_filter: str = "",
     scope = ""
     if empresa_filter: scope += f" en **{empresa_filter}**"
     if pais:           scope += f" ({pais})"
-    lines = [f"🔍 **{len(matches)} resultado(s)** para \"{query}\"{scope}:\n"]
-    for feat in matches[:12]:
+    total = len(matches)
+    shown = matches[:30]
+    lines = [f"🔍 **{total} resultado(s)** para \"{query}\"{scope}:\n"]
+    for feat in shown:
         p = feat["properties"]
-        lines.append(f"• **{p.get('nombre','?')}** — {p.get('cargo','?')} @ *{p.get('empresa','?')}* ({p.get('pais','?')})")
+        lines.append(f"• **{p.get('nombre','?')}** — {p.get('cargo','?')}")
+        lines.append(f"  🏢 {p.get('empresa','?')} ({p.get('pais','?')})")
         if p.get("correo"):
             lines.append(f"  📧 {p.get('correo')}")
-    if len(matches) > 12:
-        lines.append(f"\n_...y {len(matches) - 12} resultados más._")
+        if p.get("telefono"):
+            lines.append(f"  📞 {p.get('telefono')}")
 
     msgs = [_text("\n".join(lines))]
+
+    # Si hay más de 30, ofrecer descargar el total
+    if total > 30:
+        qs = []
+        if empresa_filter: qs.append(f"empresa={empresa_filter}")
+        if pais:           qs.append(f"pais={pais}")
+        qs.append(f"q={query}&field={field}")
+        url = "/download?" + "&".join(qs)
+        msgs.append(_text(f"_Mostrando 30 de {total}. Descarga para ver todos:_"))
+        msgs.append(_link(url, f"⬇️ Descargar los {total} resultados"))
+
     # Ofrecer buscar en otros países si hay resultados fuera del filtro actual
     if pais:
-        total = sum(1 for f in feats
+        total_global = sum(1 for f in feats
                     if q in str(f["properties"].get(field, "")).lower()
                     and (not empresa_filter or empresa_filter.lower() in str(f["properties"].get("empresa","")).lower()))
-        if total > len(matches):
-            msgs.append(_replies([{"label": f"🌍 Ver en todos los países ({total} total)", "value": f"SEARCH:{field}:{query}:{empresa_filter}:ALL"}]))
+        if total_global > total:
+            msgs.append(_replies([{"label": f"🌍 Ver en todos los países ({total_global} total)", "value": f"SEARCH:{field}:{query}:{empresa_filter}:ALL"}]))
     return msgs
 
 
