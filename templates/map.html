@@ -1369,6 +1369,15 @@ function renderMessage(msg) {
       return wrap;
     }
 
+    case 'download_link': {
+      const a = document.createElement('a');
+      a.className = 'dl-btn';
+      a.href = msg.url;
+      a.download = '';
+      a.textContent = msg.label;
+      return a;
+    }
+
     /* ---- Acción de mapa (integración chat ↔ mapa) ---- */
     case 'map_action': {
       if (msg.action === 'filter' && msg.pais) {

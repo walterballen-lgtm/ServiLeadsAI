@@ -296,80 +296,254 @@ def _download(job_id: str) -> dict:
 
 
 # ================================================================
-# MENSAJES POR PASO
+# MENSAJES POR PASO (flujo guiado)
 # ================================================================
-def welcome_messages() -> list:
-    options = [
-        {"label": f"{c['emoji']} {c['label']}", "value": c["id"]}
-        for c in CONNECTORS
-    ]
-    return [
-        _text("¡Hola! 👋 Soy **ServiLeads AI**, tu asistente de extracción de datos.\n\nTe guiaré paso a paso para configurar tu búsqueda. ¿Qué tipo de búsqueda quieres realizar?"),
-        _replies(options),
-    ]
+def _link(url: str, label: str) -> dict:
+    return {"type": "download_link", "url": url, "label": label}
 
 
-def step_messages(conv: ConvState) -> list:
+def _process_menu() -> dict:
+    return _replies([{"label": f"{c['emoji']} {c['label']}", "value": c["id"]} for c in CONNECTORS])
+
+
+def step_messages(conv: "ConvState") -> list:
     step = conv.step
-
-    if step == "ask_api":
-        return [_text(
-            f"Perfecto, vamos a buscar en **{conv.process_type.replace('_', ' ').title()}**.\n\n"
-            f"🔑 ¿Cuál es tu **API Key de {conv.api_name}**?\n\n"
-            f"_(Escríbela directamente en el chat — la mantendremos segura)_"
-        )]
-
     if step == "ask_empresas":
         return [
-            _text("📁 Ahora necesito el **CSV de Empresas**.\n\nEl archivo debe tener en la primera columna el nombre de cada empresa a buscar."),
+            _text("Para empezar necesito el **CSV de Empresas** — una empresa por fila en la primera columna."),
             _upload("empresas_file", "📎 Subir CSV de Empresas", "Primera columna = nombre de empresa"),
         ]
-
     if step == "ask_cargos":
         return [
-            _text("📁 Ahora el **CSV de Cargos**.\n\nPrimera columna = título del cargo (ej: CEO, Director Comercial, Gerente)."),
+            _text("Ahora el **CSV de Cargos** — el título de los puestos que quieres buscar (ej: CEO, Director Comercial)."),
             _upload("cargos_file", "📎 Subir CSV de Cargos", "Primera columna = cargo/título"),
         ]
-
     if step == "ask_id_org":
         return [
-            _text("📁 Necesito el **CSV de Id Organizaciones**.\n\nPrimera columna = ID de la organización en la plataforma."),
+            _text("Necesito el **CSV de IDs de Organizaciones** — el ID de cada organización en la plataforma."),
             _upload("id_org_file", "📎 Subir CSV de Id Organizaciones", "Primera columna = ID de organización"),
         ]
-
     if step == "ask_countries":
         return [
-            _text("🌎 ¿En qué **países** quieres buscar?\n\nSelecciona uno o más y haz clic en **Confirmar selección**."),
+            _text("Casi listo. ¿En qué **países** quieres enfocar la búsqueda?"),
             _countries(),
         ]
-
     if step == "confirm":
         return [
-            _text("✅ ¡Listo! Tengo todo lo necesario. Aquí está el resumen de tu búsqueda:"),
+            _text("✅ Tengo todo. Revisa el resumen y haz clic en **Iniciar búsqueda** cuando estés listo."),
             _summary(conv.summary_items()),
         ]
+    return [_text("Escribe *reiniciar* para empezar de nuevo.")]
 
-    return [_text("Estado desconocido. Escribe *reiniciar* para empezar de nuevo.")]
+
+# ================================================================
+# DETECCIÓN DE INTENCIÓN (sin API externa)
+# ================================================================
+_GREET_KW    = {"hola", "buenas", "hey", "saludos", "buenos días", "buenas tardes",
+                "hi", "buen día", "good morning", "good afternoon"}
+_HELP_KW     = {"qué puedes", "que puedes", "qué haces", "que haces", "ayuda", "help",
+                "para qué sirves", "para que sirves", "funciones", "capacidades",
+                "cómo funciona", "como funciona", "qué eres", "que eres",
+                "qué ofreces", "que ofreces"}
+_DATA_KW     = {"qué datos", "que datos", "mostrar datos", "ver datos",
+                "cuántos registros", "cuantos registros", "resumen de datos",
+                "qué hay en el mapa", "que hay en el mapa", "registros disponibles",
+                "qué información tengo", "que información tengo", "qué tengo", "que tengo",
+                "qué info", "que info", "base de datos"}
+_DOWNLOAD_KW = {"descargar", "descarga", "exportar", "exporta",
+                "dame los datos", "dame los contactos", "bajar datos", "download"}
+_DESCRIBE_KW = {"describe", "cuéntame sobre", "cuéntame de", "cuentame sobre", "cuentame de",
+                "qué es apollo", "que es apollo", "qué es lusha", "que es lusha",
+                "explícame", "explicame", "explica", "más información sobre",
+                "mas información sobre", "cómo se usa", "como se usa", "detalles de"}
+_START_KW    = {"quiero buscar", "iniciar búsqueda", "iniciar busqueda",
+                "hacer una búsqueda", "hacer una busqueda", "comenzar búsqueda",
+                "extraer contactos", "usar apollo", "usar lusha", "lanzar búsqueda",
+                "empezar búsqueda", "quiero extraer"}
+
+
+def detect_intent(text: str) -> str:
+    t = text.lower().strip()
+    if len(t) < 30 and any(k in t for k in _GREET_KW):
+        return "greeting"
+    if any(k in t for k in _HELP_KW):
+        return "help"
+    if any(k in t for k in _DATA_KW):
+        return "show_data"
+    if any(k in t for k in _DOWNLOAD_KW):
+        return "download"
+    if any(k in t for k in _DESCRIBE_KW):
+        return "describe"
+    if any(k in t for k in _START_KW):
+        return "start"
+    return "unknown"
+
+
+# ================================================================
+# RESPUESTAS POR INTENCIÓN
+# ================================================================
+_FLAGS = {"Colombia": "🇨🇴", "Peru": "🇵🇪", "Uruguay": "🇺🇾"}
+
+_PAIS_ALIAS = {
+    "colombia": "Colombia",
+    "peru": "Peru", "perú": "Peru",
+    "uruguay": "Uruguay",
+}
+
+
+def _mid_flow_note(conv: "ConvState") -> list:
+    """Recordatorio suave cuando estamos en medio de un flujo guiado."""
+    label_map = {
+        "ask_empresas":  "subir el CSV de empresas",
+        "ask_cargos":    "subir el CSV de cargos",
+        "ask_id_org":    "subir el CSV de IDs",
+        "ask_countries": "seleccionar países",
+        "confirm":       "confirmar e iniciar la búsqueda",
+    }
+    if conv.step in label_map:
+        proceso = conv.process_type.replace("_", " ").title() if conv.process_type else "búsqueda"
+        return [_text(f"_(Seguimos con la búsqueda de **{proceso}** — pendiente: {label_map[conv.step]}.)_")]
+    return []
+
+
+def resp_greeting() -> list:
+    return [_text(
+        "¡Hola! 👋 Bienvenido a **ServiLeads AI**.\n\n"
+        "Soy tu asistente para extracción de contactos B2B. Puedo:\n\n"
+        "• 🔍 Extraer contactos de empresas con **Apollo** o **Lusha**\n"
+        "• 📊 Mostrarte los **datos del mapa** (Colombia, Perú, Uruguay)\n"
+        "• ⬇️ **Descargar** registros por país o empresa\n"
+        "• 💬 Explicarte cualquier proceso disponible\n\n"
+        "¿En qué te puedo ayudar hoy?"
+    )]
+
+
+def resp_help(conv: "ConvState") -> list:
+    msgs = [_text(
+        "**¿Qué puede hacer ServiLeads AI?** 🤖\n\n"
+        "**Extracción de datos** — 4 procesos disponibles:\n"
+        "• 🔍 **Apollo Contactos** — busca personas en empresas por cargo (CSV empresas + CSV cargos + países)\n"
+        "• 🏢 **Apollo Organizaciones** — enriquece organizaciones por ID en Apollo\n"
+        "• 👤 **Lusha Contactos** — igual que Apollo Contactos pero con API de Lusha\n"
+        "• 🏛️ **Lusha Organizaciones** — enriquece organizaciones con Lusha\n\n"
+        "**Datos del mapa:**\n"
+        "Tengo **92 registros** cargados de Colombia, Perú y Uruguay que puedes explorar o descargar.\n\n"
+        "Puedes preguntarme: *'qué datos tengo'*, *'descargar Colombia'*, *'describe Apollo'*, o simplemente iniciar una búsqueda."
+    )]
+    return msgs + _mid_flow_note(conv)
+
+
+def resp_show_data(conv: "ConvState") -> list:
+    from collections import Counter
+    feats = GEOJSON_CACHE.get("features", [])
+    if not feats:
+        return [_text("No hay datos disponibles en el mapa en este momento.")]
+
+    by_pais    = Counter(f["properties"].get("pais", "?")    for f in feats)
+    by_empresa = Counter(f["properties"].get("empresa", "?") for f in feats)
+
+    lines = [f"📊 **Datos en el mapa — {len(feats)} registros totales**\n"]
+    lines.append("**Por país:**")
+    for pais, cnt in sorted(by_pais.items(), key=lambda x: -x[1]):
+        lines.append(f"  {_FLAGS.get(pais, '🌍')} {pais}: **{cnt}** contactos")
+    lines.append("\n**Por empresa:**")
+    for emp, cnt in sorted(by_empresa.items(), key=lambda x: -x[1]):
+        lines.append(f"  🏢 {emp}: {cnt}")
+    lines.append("\n**Campos disponibles:** país · empresa · nombre · cargo · correo · teléfono · LinkedIn")
+    lines.append("\n¿Quieres **descargar** los datos de algún país o empresa específica?")
+
+    return [_text("\n".join(lines))] + _mid_flow_note(conv)
+
+
+def resp_download(text: str, conv: "ConvState") -> list:
+    t = text.lower()
+    feats = GEOJSON_CACHE.get("features", [])
+
+    found_pais    = next((v for k, v in _PAIS_ALIAS.items() if k in t), None)
+    all_companies = list({f["properties"].get("empresa", "") for f in feats if f["properties"].get("empresa")})
+    found_empresa = next(
+        (emp for emp in all_companies
+         if any(w in t for w in emp.lower().split() if len(w) >= 4)),
+        None
+    )
+
+    if not found_pais and not found_empresa:
+        countries = sorted({f["properties"].get("pais", "") for f in feats if f["properties"].get("pais")})
+        return [
+            _text("¿De qué país o empresa quieres descargar los datos?"),
+            _replies(
+                [{"label": f"🌍 Todos ({len(feats)})", "value": "DOWNLOAD_ALL"}] +
+                [{"label": f"{_FLAGS.get(c,'🌍')} {c}", "value": f"DOWNLOAD_PAIS:{c}"}
+                 for c in countries]
+            ),
+        ] + _mid_flow_note(conv)
+
+    filtered = [f for f in feats if
+        (not found_pais    or f["properties"].get("pais")    == found_pais) and
+        (not found_empresa or f["properties"].get("empresa") == found_empresa)]
+
+    if not filtered:
+        return [_text("No encontré registros con esos filtros. Prueba otro país o empresa.")]
+
+    params, label_parts = [], []
+    if found_pais:    params.append(f"pais={found_pais}");       label_parts.append(found_pais)
+    if found_empresa: params.append(f"empresa={found_empresa}"); label_parts.append(found_empresa)
+    url   = "/api/download-map?" + "&".join(params)
+    label = " — ".join(label_parts)
+
+    return [
+        _text(f"Encontré **{len(filtered)} registros** para {label}."),
+        _link(url, f"⬇️ Descargar {label} ({len(filtered)} registros)"),
+    ] + _mid_flow_note(conv)
+
+
+def resp_describe(text: str, conv: "ConvState") -> list:
+    t = text.lower()
+    descs = {
+        "APOLLO_CONTACT": (
+            "🔍 **Apollo — Contactos**\n\n"
+            "Busca personas en empresas según su cargo usando la API de Apollo.io.\n\n"
+            "**Necesitas:** CSV de empresas · CSV de cargos · países destino\n"
+            "**Obtienes:** nombre, cargo, correo, teléfono, LinkedIn por contacto\n\n"
+            "Ideal para campañas de outbound B2B con listados propios."
+        ),
+        "APOLLO_ORG": (
+            "🏢 **Apollo — Organizaciones**\n\n"
+            "Enriquece datos de organizaciones a partir de su ID en Apollo.io.\n\n"
+            "**Necesitas:** CSV con IDs de organizaciones\n"
+            "**Obtienes:** sector, tamaño, web, descripción y más datos de la empresa."
+        ),
+        "LUSHA_CONTACT": (
+            "👤 **Lusha — Contactos**\n\n"
+            "Igual que Apollo Contactos pero usando la API de Lusha. Lusha tiene mayor cobertura en LATAM y Europa.\n\n"
+            "**Necesitas:** CSV de empresas · CSV de cargos · países destino\n"
+            "**Obtienes:** nombre, cargo, correo, teléfono, LinkedIn."
+        ),
+        "LUSHA_ORG": (
+            "🏛️ **Lusha — Organizaciones**\n\n"
+            "Enriquece organizaciones con datos de Lusha.\n\n"
+            "**Necesitas:** CSV con IDs de organización\n"
+            "**Obtienes:** datos completos de la empresa."
+        ),
+    }
+
+    if   "apollo" in t and ("org" in t or "organiz" in t): key = "APOLLO_ORG"
+    elif "apollo" in t:                                      key = "APOLLO_CONTACT"
+    elif "lusha"  in t and ("org" in t or "organiz" in t): key = "LUSHA_ORG"
+    elif "lusha"  in t:                                      key = "LUSHA_CONTACT"
+    else:
+        return [_text("Aquí un resumen de todos los procesos:\n\n" + "\n\n".join(descs.values()))] + _mid_flow_note(conv)
+
+    return [_text(descs[key])] + _mid_flow_note(conv)
 
 
 # ================================================================
 # MOTOR DE CONVERSACIÓN
 # ================================================================
-RESET_WORDS = {"reiniciar", "restart", "reset", "inicio", "hola", "empezar", "start"}
+RESET_WORDS = {"reiniciar", "restart", "reset"}
 
 
 def handle_turn(sid: str, payload: dict) -> list:
-    """
-    Procesa un turno del usuario y devuelve la lista de mensajes del agente.
-
-    payload keys:
-      type: "text" | "action" | "file_uploaded" | "countries"
-      value: contenido según el tipo
-      field: (solo en file_uploaded) nombre del campo
-      path: (solo en file_uploaded) ruta temporal del archivo
-      paises: (solo en countries) lista de valores en inglés
-      names: (solo en countries) lista de nombres en español
-    """
     conv = conversations.get(sid)
     if conv is None:
         conv = ConvState(sid)
@@ -378,107 +552,137 @@ def handle_turn(sid: str, payload: dict) -> list:
     ptype = payload.get("type", "text")
     value = str(payload.get("value", "")).strip()
 
-    # Reinicio en cualquier momento
-    if ptype == "text" and value.lower() in RESET_WORDS:
-        conversations[sid] = ConvState(sid)
-        return welcome_messages()
-
-    # ---------- INIT / WELCOME ----------
+    # Recarga de página → saludo + menú
     if ptype == "init":
         conv.step = "welcome"
-        return welcome_messages()
+        return resp_greeting() + [_process_menu()]
 
-    if conv.step == "welcome":
-        if ptype == "action" and value in {c["id"] for c in CONNECTORS}:
-            conv.process_type = value
-            conv.step = conv.STEP_MAP[value][0]
-            return step_messages(conv)
-        return welcome_messages()
+    # Reinicio explícito
+    if ptype == "text" and value.lower() in RESET_WORDS:
+        conversations[sid] = ConvState(sid)
+        return [_text("↩️ ¡Listo, empezamos de nuevo!")] + resp_greeting()
 
-    # ---------- CSV EMPRESAS ----------
+    # Botones de descarga generados dinámicamente
+    if ptype == "action" and value.startswith("DOWNLOAD_"):
+        feats = GEOJSON_CACHE.get("features", [])
+        if value == "DOWNLOAD_ALL":
+            return [
+                _text(f"Aquí están todos los registros — **{len(feats)}** contactos."),
+                _link("/api/download-map", f"⬇️ Descargar todos ({len(feats)} registros)"),
+            ]
+        if value.startswith("DOWNLOAD_PAIS:"):
+            pais = value.split(":", 1)[1]
+            cnt  = sum(1 for f in feats if f["properties"].get("pais") == pais)
+            return [
+                _text(f"**{cnt} registros** de {pais} listos para descargar."),
+                _link(f"/api/download-map?pais={pais}", f"⬇️ Descargar {pais} ({cnt} registros)"),
+            ]
+
+    # Selección de proceso desde el menú
+    if ptype == "action" and value in {c["id"] for c in CONNECTORS}:
+        conv.process_type = value
+        conv.step = conv.STEP_MAP[value][0]
+        conn = next(c for c in CONNECTORS if c["id"] == value)
+        return [_text(f"Perfecto, vamos con **{conn['label']}** {conn['emoji']}")] + step_messages(conv)
+
+    # Intención libre (texto)
+    if ptype == "text" and value:
+        intent = detect_intent(value)
+        if intent == "greeting": return resp_greeting()
+        if intent == "help":     return resp_help(conv)
+        if intent == "show_data":return resp_show_data(conv)
+        if intent == "download": return resp_download(value, conv)
+        if intent == "describe": return resp_describe(value, conv)
+        if intent == "start" and conv.step == "welcome":
+            return [_text("¡Claro! ¿Con qué herramienta quieres trabajar?"), _process_menu()]
+
+    # ---- Pasos del flujo guiado ----
+
     if conv.step == "ask_empresas":
         if ptype == "file_uploaded" and payload.get("field") == "empresas_file":
-            conv.empresas_path = payload["path"]
+            conv.empresas_path  = payload["path"]
             conv.empresas_count = count_csv_rows(conv.empresas_path)
             if conv.empresas_count == 0:
-                return [_text("⚠️ El archivo parece estar vacío. Sube un CSV con al menos una empresa en la primera columna."),
+                return [_text("⚠️ El archivo parece estar vacío. Necesito al menos una empresa en la primera columna."),
                         _upload("empresas_file", "📎 Subir CSV de Empresas", "Primera columna = nombre de empresa")]
             conv.advance()
-            return [_text(f"✅ CSV de empresas cargado — **{conv.empresas_count}** registros.")] + step_messages(conv)
-        return [_text("Por favor sube el archivo CSV de empresas usando el botón de arriba. 👆")]
+            return [_text(f"✅ {conv.empresas_count} empresas cargadas.")] + step_messages(conv)
+        if ptype == "text":
+            return [_text("Para continuar sube el CSV de empresas 👇"),
+                    _upload("empresas_file", "📎 Subir CSV de Empresas", "Primera columna = nombre de empresa")]
 
-    # ---------- CSV CARGOS ----------
     if conv.step == "ask_cargos":
         if ptype == "file_uploaded" and payload.get("field") == "cargos_file":
-            conv.cargos_path = payload["path"]
+            conv.cargos_path  = payload["path"]
             conv.cargos_count = count_csv_rows(conv.cargos_path)
             if conv.cargos_count == 0:
-                return [_text("⚠️ El archivo de cargos está vacío. Asegúrate de que la primera columna tenga los títulos."),
+                return [_text("⚠️ El archivo de cargos está vacío."),
                         _upload("cargos_file", "📎 Subir CSV de Cargos")]
             conv.advance()
-            return [_text(f"✅ CSV de cargos cargado — **{conv.cargos_count}** registros.")] + step_messages(conv)
-        return [_text("Por favor sube el archivo CSV de cargos. 👆")]
+            return [_text(f"✅ {conv.cargos_count} cargos cargados.")] + step_messages(conv)
+        if ptype == "text":
+            return [_text("Sube el CSV de cargos para continuar 👇"),
+                    _upload("cargos_file", "📎 Subir CSV de Cargos", "Primera columna = cargo/título")]
 
-    # ---------- CSV ID ORG ----------
     if conv.step == "ask_id_org":
         if ptype == "file_uploaded" and payload.get("field") == "id_org_file":
-            conv.id_org_path = payload["path"]
+            conv.id_org_path  = payload["path"]
             conv.id_org_count = count_csv_rows(conv.id_org_path)
             if conv.id_org_count == 0:
                 return [_text("⚠️ El archivo de IDs está vacío."),
                         _upload("id_org_file", "📎 Subir CSV de Id Organizaciones")]
             conv.advance()
-            return [_text(f"✅ CSV de IDs cargado — **{conv.id_org_count}** registros.")] + step_messages(conv)
-        return [_text("Por favor sube el archivo CSV de IDs de organizaciones. 👆")]
+            return [_text(f"✅ {conv.id_org_count} IDs cargados.")] + step_messages(conv)
+        if ptype == "text":
+            return [_text("Sube el CSV de IDs de organizaciones para continuar 👇"),
+                    _upload("id_org_file", "📎 Subir CSV de Id Organizaciones", "Primera columna = ID de organización")]
 
-    # ---------- PAÍSES ----------
     if conv.step == "ask_countries":
         if ptype == "countries" and payload.get("paises"):
             conv.paises = payload["paises"]
             conv.paises_names = payload.get("names", conv.paises)
             if not conv.paises:
-                return [_text("Selecciona al menos un país. 👆"), _countries()]
+                return [_text("Selecciona al menos un país."), _countries()]
             conv.advance()
             shown = ", ".join(conv.paises_names[:5])
             extra = len(conv.paises_names) - 5
             label = shown + (f" y {extra} más" if extra > 0 else "")
-            # Emitir acción de mapa: filtra/vuela al país si solo hay uno seleccionado
-            map_action = {
-                "type": "map_action",
-                "action": "filter",
-                "pais": conv.paises[0] if len(conv.paises) == 1 else None,
-                "empresa": None,
-            }
-            return [_text(f"🌎 Países confirmados: **{label}**"), map_action] + step_messages(conv)
-        return [_text("Selecciona los países y haz clic en **Confirmar selección**. 👆"), _countries()]
+            map_action = {"type": "map_action", "action": "filter",
+                          "pais": conv.paises[0] if len(conv.paises) == 1 else None, "empresa": None}
+            return [_text(f"🌎 {label} — confirmado."), map_action] + step_messages(conv)
+        if ptype == "text":
+            return [_text("Selecciona los países y haz clic en **Confirmar selección** 👇"), _countries()]
 
-    # ---------- CONFIRMAR ----------
     if conv.step == "confirm":
         if ptype == "action" and value == "START":
             result = _launch_job(conv)
             if "error" in result:
                 return [_text(f"❌ {result['error']}")]
             conv.job_id = result["job_id"]
-            conv.step = "running"
-            return [
-                _text("🚀 ¡Búsqueda iniciada! Los logs aparecerán aquí en tiempo real..."),
-                _stream(conv.job_id),
-            ]
+            conv.step   = "running"
+            return [_text("🚀 ¡Búsqueda iniciada! Los logs aparecen en tiempo real..."), _stream(conv.job_id)]
         if ptype == "action" and value == "RESTART":
             conversations[sid] = ConvState(sid)
-            return welcome_messages()
-        return [
-            _text("Haz clic en **Iniciar búsqueda** para comenzar."),
-            _summary(conv.summary_items()),
-        ]
+            return [_text("↩️ Búsqueda cancelada.")] + resp_greeting()
+        return [_text("Revisa el resumen y haz clic en **Iniciar búsqueda** cuando estés listo."),
+                _summary(conv.summary_items())]
 
-    # ---------- RUNNING / DONE ----------
     if conv.step in ("running", "done"):
         if conv.job_id:
-            return [_text("Ya hay un proceso en curso. Espera a que termine o escribe *reiniciar* para cancelar y empezar de nuevo.")]
-        return welcome_messages()
+            return [_text("Hay un proceso en curso. Escribe *reiniciar* para cancelar y empezar de nuevo.")]
+        return resp_greeting()
 
-    return [_text("No entendí eso. 😊 Escribe *reiniciar* para volver al inicio."), *welcome_messages()]
+    # Fallback: responde pero no repite un menú cerrado
+    if ptype == "text" and value:
+        return [_text(
+            "No estoy seguro de entenderte, pero puedo ayudarte con:\n\n"
+            "• **Extraer contactos** — escribe *'quiero buscar contactos'*\n"
+            "• **Ver los datos del mapa** — escribe *'qué datos tengo'*\n"
+            "• **Descargar registros** — escribe *'descargar Colombia'*\n"
+            "• **Conocer los procesos** — escribe *'describe Apollo'*"
+        )]
+
+    return resp_greeting() + [_process_menu()]
 
 
 # ================================================================
@@ -582,6 +786,37 @@ def index():
 def geojson():
     """Devuelve todos los puntos del shapefile como GeoJSON."""
     return jsonify(GEOJSON_CACHE)
+
+
+@app.route("/api/download-map")
+def download_map():
+    """Descarga los puntos del shapefile filtrados por pais y/o empresa como CSV."""
+    import io as _io
+    pais    = request.args.get("pais",    "").strip()
+    empresa = request.args.get("empresa", "").strip()
+    feats   = GEOJSON_CACHE.get("features", [])
+    filtered = [
+        f for f in feats
+        if (not pais    or f["properties"].get("pais")    == pais)
+        and (not empresa or f["properties"].get("empresa") == empresa)
+    ]
+    if not filtered:
+        return jsonify({"error": "No hay registros para esos filtros"}), 404
+
+    fields  = ["pais", "empresa", "nombre", "cargo", "correo", "telefono", "url"]
+    output  = _io.StringIO()
+    writer  = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for f in filtered:
+        writer.writerow(f["properties"])
+    output.seek(0)
+
+    slug = (pais or empresa or "todos").replace(" ", "_")
+    from flask import make_response as _mkr
+    resp = _mkr(output.getvalue().encode("utf-8"))
+    resp.headers["Content-Type"]        = "text/csv; charset=utf-8"
+    resp.headers["Content-Disposition"] = f'attachment; filename="servi_leads_{slug}.csv"'
+    return resp
 
 
 @app.route("/api/filters")
