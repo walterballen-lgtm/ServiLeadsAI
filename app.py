@@ -153,7 +153,7 @@ def _load_geojson() -> dict:
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "puntos_empresas", "demo_info")
     if not _SHP_OK:
         return {"type": "FeatureCollection", "features": []}
-    sf = pyshp.Reader(path, encoding="cp1252")
+    sf = pyshp.Reader(path, encoding="utf-8")
     fields = [f[0] for f in sf.fields[1:]]
     features = []
     for shp, rec in zip(sf.shapes(), sf.records()):
