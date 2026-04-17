@@ -221,6 +221,69 @@
     font-weight: 600;
   }
 
+  /* User badge dropdown */
+  .user-badge { position: relative; }
+  .user-badge-trigger {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 11px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: border-color .2s;
+    user-select: none;
+  }
+  .user-badge-trigger:hover { border-color: rgba(88,166,255,.4); }
+  .user-badge-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    object-fit: cover; flex-shrink: 0;
+  }
+  .user-badge-avatar-default {
+    background: linear-gradient(135deg,#1f6feb,#58a6ff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; width: 28px; height: 28px;
+    border-radius: 50%; flex-shrink: 0;
+  }
+  .user-badge-info { flex: 1; min-width: 0; }
+  .user-badge-name {
+    font-size: .75rem; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .user-badge-company {
+    font-size: .62rem; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .user-badge-chevron {
+    font-size: .65rem; color: var(--muted);
+    flex-shrink: 0; transition: transform .2s;
+  }
+  .user-badge.open .user-badge-chevron { transform: rotate(180deg); }
+  .user-badge-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    opacity: 0; transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity .18s, transform .18s;
+    z-index: 200;
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    box-shadow: 0 8px 24px rgba(0,0,0,.3);
+  }
+  .user-badge.open .user-badge-menu {
+    opacity: 1; transform: translateY(0); pointer-events: auto;
+  }
+  .user-badge-logout {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    font-size: .82rem; font-weight: 500;
+    color: var(--danger); text-decoration: none;
+    transition: background .15s;
+  }
+  .user-badge-logout:hover { background: rgba(248,81,73,.08); }
+
   /* Selector empresa */
   .styled-select {
     width: 100%;
@@ -664,18 +727,23 @@
     </div>
   </div>
 
-  <!-- Usuario logueado -->
-  <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;">
-    {% if user and user.picture %}
-    <img src="{{ user.picture }}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;" alt="avatar"/>
-    {% else %}
-    <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#1f6feb,#58a6ff);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">👤</div>
-    {% endif %}
-    <div style="flex:1;min-width:0;">
-      <div style="font-size:.75rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ user.name if user else 'Usuario' }}</div>
-      <div style="font-size:.62rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ user.company if user else '' }}</div>
+  <!-- Usuario logueado con dropdown -->
+  <div class="user-badge" id="user-badge">
+    <div class="user-badge-trigger" onclick="toggleUserMenu()">
+      {% if user and user.picture %}
+      <img src="{{ user.picture }}" class="user-badge-avatar" alt="avatar"/>
+      {% else %}
+      <div class="user-badge-avatar-default">👤</div>
+      {% endif %}
+      <div class="user-badge-info">
+        <div class="user-badge-name">{{ user.name if user else 'Usuario' }}</div>
+        <div class="user-badge-company">{{ user.company if user else '' }}</div>
+      </div>
+      <span class="user-badge-chevron">▾</span>
     </div>
-    <a href="/logout" style="flex-shrink:0;font-size:.68rem;color:var(--muted);text-decoration:none;padding:3px 7px;border:1px solid var(--border);border-radius:6px;transition:color .2s,border-color .2s;" onmouseover="this.style.color='#f85149';this.style.borderColor='#f85149'" onmouseout="this.style.color='';this.style.borderColor=''">↩</a>
+    <div class="user-badge-menu" id="user-menu">
+      <a href="/logout" class="user-badge-logout">🚪 Cerrar sesión</a>
+    </div>
   </div>
 
   <!-- Tema -->
@@ -1073,6 +1141,14 @@ function updateCount(visible, total) {
    TEMA
    ============================================================ */
 let isDark = true;
+
+function toggleUserMenu() {
+  document.getElementById('user-badge').classList.toggle('open');
+}
+document.addEventListener('click', function(e) {
+  const badge = document.getElementById('user-badge');
+  if (badge && !badge.contains(e.target)) badge.classList.remove('open');
+});
 
 function toggleTheme() {
   isDark = !isDark;
