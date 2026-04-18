@@ -98,7 +98,7 @@
     padding: 44px 40px 36px;
     box-shadow: 0 30px 70px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04);
   }
-
+  /* ---- Cambio W ---- */
   /* ---- Brand ---- */
   .brand {
     display: flex;
@@ -107,25 +107,35 @@
     margin-bottom: 32px;
     gap: 14px;
   }
+  
   .brand-logo {
-    width: 200px; height: 100px;
+    width: 400px;
+    height: 200px;
     border-radius: 16px;
     overflow: hidden;
-    background: rgba(255,255,255,0.65);
+    background: rgba(255, 255, 255, 0.2); /* un poco más visible */
+    backdrop-filter: blur(8px);
     box-shadow: 0 8px 32px rgba(88,166,255,.4), 0 0 0 1px rgba(88,166,255,.2);
     animation: logo-pulse 3s ease-in-out infinite;
-    display: flex; align-items: center; justify-content: center;
-    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
+  
+  /* 🔥 CAMBIO IMPORTANTE AQUÍ */
   .brand-logo img {
-    width: 100%; height: 100%;
-    object-fit: contain;
-    padding: 6px 10px;
+    width: 100%;
+    height: auto;        /* mantiene proporción */
+    max-height: 100%;    /* evita que se salga */
+    object-fit: contain; /* NO recorta el logo */
   }
+  
+  /* Animación */
   @keyframes logo-pulse {
     0%,100%{ box-shadow: 0 8px 32px rgba(88,166,255,.4), 0 0 0 1px rgba(88,166,255,.2); }
     50%{     box-shadow: 0 8px 48px rgba(88,166,255,.6), 0 0 0 1px rgba(88,166,255,.35); }
   }
+  
   .brand h1 {
     font-size: 1.6rem;
     font-weight: 800;
@@ -135,6 +145,7 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+  
   .brand p {
     font-size: .82rem;
     color: var(--muted);
@@ -142,7 +153,7 @@
     line-height: 1.5;
     max-width: 280px;
   }
-
+  /* ---- Cambio W ---- */
   /* ---- Divider ---- */
   .divider {
     display: flex; align-items: center; gap: 12px;
