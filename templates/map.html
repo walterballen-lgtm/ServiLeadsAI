@@ -1085,11 +1085,17 @@ function onCompanyChange() {
   applyFilters();
 }
 
+function normStr(s) {
+  return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 function applyFilters() {
+  const nc = normStr(activeCountry);
+  const ne = normStr(activeCompany);
   const filtered = allFeatures.filter(f => {
     const p = f.properties;
-    return (!activeCountry || p.pais === activeCountry)
-        && (!activeCompany || p.empresa === activeCompany);
+    return (!activeCountry || normStr(p.pais).includes(nc))
+        && (!activeCompany || normStr(p.empresa).includes(ne));
   });
 
   renderGeoLayer(filtered);
@@ -1461,18 +1467,12 @@ function renderMessage(msg) {
     /* ---- Acción de mapa (integración chat ↔ mapa) ---- */
     case 'map_action': {
       if (msg.action === 'filter') {
-        if (msg.pais) {
-          applyCountryChip(msg.pais);           // filtra país y actualiza empresa select
-          if (msg.empresa) {
-            activeCompany = msg.empresa;
-            document.getElementById('company-select').value = msg.empresa;
-            applyFilters();
-          }
-        } else if (msg.empresa) {
-          activeCompany = msg.empresa;
-          document.getElementById('company-select').value = msg.empresa;
-          applyFilters();
-        }
+        activeCountry = msg.pais    || '';
+        activeCompany = msg.empresa || '';
+        document.getElementById('country-select').value = activeCountry;
+        updateCompanySelect(activeCountry);
+        document.getElementById('company-select').value = activeCompany;
+        applyFilters();
       }
       return null;
     }
