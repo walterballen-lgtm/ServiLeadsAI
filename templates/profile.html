@@ -142,7 +142,7 @@
     padding: 16px 14px;
     border: 1.5px solid var(--border);
     border-radius: 14px;
-    background: var(--surface2);
+    background: rgba(255,255,255,0.65);
     cursor: pointer;
     transition: border-color .2s, background .2s, transform .15s, box-shadow .2s;
     user-select: none;
@@ -160,16 +160,13 @@
   }
   .company-label input { display: none; }
   .company-logo {
-    max-width: 130px;
-    max-height: 52px;
+    max-width: 140px;
+    max-height: 56px;
     width: auto;
     height: auto;
     object-fit: contain;
-    border-radius: 10px;
-    background: rgba(255,255,255,0.65);
-    padding: 6px 10px;
     transition: opacity .2s, transform .2s;
-    opacity: 0.9;
+    opacity: 0.95;
   }
   .company-label:hover .company-logo { opacity: 1; transform: scale(1.05); }
   .company-label:has(input:checked) .company-logo { opacity: 1; }
