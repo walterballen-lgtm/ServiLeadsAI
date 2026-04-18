@@ -763,8 +763,8 @@ def resp_describe(text: str, conv: "ConvState") -> list:
     desc = (
         "🚀 **Búsqueda de Contactos — Proceso Unificado**\n\n"
         "Combina Apollo y Lusha en una sola ejecución inteligente:\n\n"
-        "**Fase 1 — Apollo:** busca contactos para todas tus empresas\n"
-        "**Fase 2 — Lusha:** busca automáticamente las empresas que Apollo no encontró\n"
+        "**Fase 1 — Plataforma principal:** busca contactos para todas tus empresas\n"
+        "**Fase 2 — Plataforma secundaria:** busca automáticamente las empresas sin resultados\n"
         "**Fase 3 — Consolidado:** une ambos resultados en un solo CSV\n"
         "**Fase 4 — Validación IA:** Gemini filtra los contactos según los cargos que buscas\n\n"
         "**Necesitas:**\n"
