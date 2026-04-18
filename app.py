@@ -11,7 +11,7 @@ PARA AGREGAR UN NUEVO CONECTOR:
 =============================================================
 """
 
-import os, uuid, queue, threading, tempfile, csv, secrets, json, re
+import os, uuid, queue, threading, tempfile, csv, secrets, json, re, unicodedata
 import requests
 from functools import wraps
 from urllib.parse import urlencode
@@ -402,33 +402,38 @@ def call_gemini(conv: "ConvState", user_message: str) -> dict:
 # ================================================================
 # BÚSQUEDA Y FILTRO EN MAPA
 # ================================================================
+def _norm(s: str) -> str:
+    """Minúsculas + sin acentos para comparaciones flexibles."""
+    return unicodedata.normalize("NFD", str(s).lower()).encode("ascii", "ignore").decode()
+
+
 def resp_search_map(query: str, field: str = "nombre", empresa_filter: str = "", pais: str = "") -> list:
     feats = GEOJSON_CACHE.get("features", [])
-    q = query.lower().strip()
+    q = _norm(query.strip())
     if field not in {"nombre", "empresa", "cargo", "correo", "url", "telefono"}:
         field = "nombre"
 
     # Si hay filtro de empresa, verificar primero que exista en la base
     if empresa_filter:
-        ef = empresa_filter.lower()
-        empresa_exists = any(ef in str(f["properties"].get("empresa", "")).lower() for f in feats)
+        ef = _norm(empresa_filter)
+        empresa_exists = any(ef in _norm(f["properties"].get("empresa", "")) for f in feats)
         if not empresa_exists:
             return [_text(f"No tienes la empresa **{empresa_filter}** en tu base de datos.")]
 
-    # Buscar con todos los filtros
+    # Buscar con todos los filtros (parcial + sin acentos)
     matches = [
         f for f in feats
-        if q in str(f["properties"].get(field, "")).lower()
-        and (not pais           or f["properties"].get("pais", "").lower() == pais.lower())
-        and (not empresa_filter or empresa_filter.lower() in str(f["properties"].get("empresa", "")).lower())
+        if q in _norm(f["properties"].get(field, ""))
+        and (not pais           or _norm(pais) in _norm(f["properties"].get("pais", "")))
+        and (not empresa_filter or _norm(empresa_filter) in _norm(f["properties"].get("empresa", "")))
     ]
 
     if not matches:
         # ¿Existe en otros países?
         matches_other = [
             f for f in feats
-            if q in str(f["properties"].get(field, "")).lower()
-            and (not empresa_filter or empresa_filter.lower() in str(f["properties"].get("empresa", "")).lower())
+            if q in _norm(f["properties"].get(field, ""))
+            and (not empresa_filter or _norm(empresa_filter) in _norm(f["properties"].get("empresa", "")))
         ]
         if matches_other and pais:
             countries = sorted({f["properties"].get("pais", "") for f in matches_other if f["properties"].get("pais")})
@@ -474,8 +479,8 @@ def resp_search_map(query: str, field: str = "nombre", empresa_filter: str = "",
     # Ofrecer buscar en otros países si hay resultados fuera del filtro actual
     if pais:
         total_global = sum(1 for f in feats
-                    if q in str(f["properties"].get(field, "")).lower()
-                    and (not empresa_filter or empresa_filter.lower() in str(f["properties"].get("empresa","")).lower()))
+                    if q in _norm(f["properties"].get(field, ""))
+                    and (not empresa_filter or _norm(empresa_filter) in _norm(f["properties"].get("empresa", ""))))
         if total_global > total:
             msgs.append(_replies([{"label": f"🌍 Ver en todos los países ({total_global} total)", "value": f"SEARCH:{field}:{query}:{empresa_filter}:ALL"}]))
     return msgs
@@ -486,8 +491,8 @@ def resp_filter_map(pais: str = "", empresa: str = "", extra_msg: str = "") -> l
     from collections import Counter
     feats = GEOJSON_CACHE.get("features", [])
     filtered = [f for f in feats if
-        (not pais    or f["properties"].get("pais")    == pais) and
-        (not empresa or f["properties"].get("empresa") == empresa)]
+        (not pais    or _norm(pais)    in _norm(f["properties"].get("pais",    ""))) and
+        (not empresa or _norm(empresa) in _norm(f["properties"].get("empresa", "")))]
 
     scope = f"**{pais}**" if pais else f"**{empresa}**" if empresa else "todos los países"
     map_msg = {"type": "map_action", "action": "filter", "pais": pais or None, "empresa": empresa or None}
