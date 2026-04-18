@@ -811,6 +811,10 @@
 /* ============================================================
    CONSTANTES
    ============================================================ */
+const USER_NAME    = {{ (user.name    or '')|tojson }};
+const USER_EMAIL   = {{ (user.email   or '')|tojson }};
+const USER_COMPANY = {{ (user.company or '')|tojson }};
+
 const COUNTRY_COLORS = {
   'Colombia': '#F4D03F',
   'Peru':     '#E74C3C',
@@ -909,7 +913,11 @@ function buildPersonCard(p) {
   return `<div style="padding:8px 0;border-top:1px solid rgba(255,255,255,.08);first-child{border-top:none}">
     <div class="popup-nombre">${p.nombre || '—'}</div>
     <div class="popup-cargo">${p.cargo || ''}</div>
-    ${p.correo  ? `<div class="popup-field"><span>📧</span> ${p.correo}</div>` : ''}
+    ${p.correo ? (() => {
+      const subject = encodeURIComponent(`Contacto desde ${USER_COMPANY}`);
+      const body = encodeURIComponent(`Hola ${p.nombre || ''},\n\nMe comunico contigo desde ${USER_COMPANY}.\n\nAtentamente,\n${USER_NAME}\n${USER_EMAIL}`);
+      return `<div class="popup-field"><span>📧</span> <a href="mailto:${p.correo}?subject=${subject}&body=${body}">${p.correo}</a></div>`;
+    })() : ''}
     ${phones.length ? `<div class="popup-field"><span>📞</span> ${phones[0]}</div>` : ''}
     ${shortUrl && url ? `<div class="popup-field"><span>🔗</span> <a href="${url}" target="_blank" rel="noopener">${shortUrl}</a></div>` : ''}
   </div>`;
