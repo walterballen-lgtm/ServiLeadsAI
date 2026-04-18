@@ -913,11 +913,7 @@ function buildPersonCard(p) {
   return `<div style="padding:8px 0;border-top:1px solid rgba(255,255,255,.08);first-child{border-top:none}">
     <div class="popup-nombre">${p.nombre || '—'}</div>
     <div class="popup-cargo">${p.cargo || ''}</div>
-    ${p.correo ? (() => {
-      const subject = encodeURIComponent(`Contacto desde ${USER_COMPANY}`);
-      const body = encodeURIComponent(`Hola ${p.nombre || ''},\n\nMe comunico contigo desde ${USER_COMPANY}.\n\nAtentamente,\n${USER_NAME}\n${USER_EMAIL}`);
-      return `<div class="popup-field"><span>📧</span> <a href="mailto:${p.correo}?subject=${subject}&body=${body}">${p.correo}</a></div>`;
-    })() : ''}
+    ${p.correo ? `<div class="popup-field"><span>📧</span> <a href="#" onclick="enviarCorreo(event,'${p.correo}','${(p.nombre||'').replace(/'/g,"\\'")}','${(p.cargo||'').replace(/'/g,"\\'")}','${(p.empresa||'').replace(/'/g,"\\'")}'); return false;">${p.correo}</a></div>` : ''}
     ${phones.length ? `<div class="popup-field"><span>📞</span> ${phones[0]}</div>` : ''}
     ${shortUrl && url ? `<div class="popup-field"><span>🔗</span> <a href="${url}" target="_blank" rel="noopener">${shortUrl}</a></div>` : ''}
   </div>`;
@@ -1487,6 +1483,41 @@ function renderMessage(msg) {
 
 function selAll(card, checked) {
   card.querySelectorAll('input[name="country"]').forEach(cb => cb.checked = checked);
+}
+
+function enviarCorreo(e, correo, nombre, cargo, empresa) {
+  e.preventDefault();
+  const link = e.target;
+  const orig = link.textContent;
+  link.textContent = '⏳ Enviando...';
+  link.style.pointerEvents = 'none';
+
+  fetch('/api/send_email', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      destinatario: correo,
+      nombre_contacto: nombre,
+      cargo_contacto: cargo,
+      empresa: empresa
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      link.textContent = '✅ Enviado';
+      link.style.color = 'var(--success)';
+    } else {
+      link.textContent = orig;
+      link.style.pointerEvents = '';
+      alert('Error al enviar: ' + (data.error || 'desconocido'));
+    }
+  })
+  .catch(() => {
+    link.textContent = orig;
+    link.style.pointerEvents = '';
+    alert('Error de conexión al enviar el correo.');
+  });
 }
 </script>
 </body>

@@ -1335,11 +1335,11 @@ def auth_google():
     params = {
         "client_id":     GOOGLE_CLIENT_ID,
         "redirect_uri":  redirect_uri,
-        "scope":         "openid email profile",
+        "scope":         "openid email profile https://www.googleapis.com/auth/gmail.send",
         "response_type": "code",
         "state":         flask_session["oauth_state"],
-        "access_type":   "online",
-        "prompt":        "select_account",
+        "access_type":   "offline",
+        "prompt":        "consent select_account",
     }
     return redirect(GOOGLE_AUTH_URL + "?" + urlencode(params))
 
@@ -1361,7 +1361,8 @@ def auth_callback():
         "redirect_uri":  redirect_uri,
         "grant_type":    "authorization_code",
     })
-    access_token = token_resp.json().get("access_token")
+    token_data   = token_resp.json()
+    access_token = token_data.get("access_token")
     if not access_token:
         return redirect(url_for("login"))
 
@@ -1387,6 +1388,10 @@ def auth_callback():
         "picture":   info.get("picture", ""),
         "google_id": info.get("sub", ""),
         "company":   None,
+    }
+    flask_session["gmail_token"] = {
+        "access_token":  access_token,
+        "refresh_token": token_data.get("refresh_token"),
     }
     return redirect(url_for("profile"))
 
@@ -1553,6 +1558,134 @@ def download(job_id: str):
     if not os.path.exists(output_path):
         return jsonify({"error": "Archivo no generado. Es posible que no se encontraron resultados."}), 404
     return send_file(output_path, as_attachment=True, download_name=job["output_filename"])
+
+
+GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+GMAIL_TOKEN_REFRESH_URL = "https://oauth2.googleapis.com/token"
+
+PLANTILLA_EMAIL = """\
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;padding:20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0"
+             style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
+        <tr>
+          <td style="background-color:#1a73e8;color:#ffffff;padding:30px;text-align:center;">
+            <h1 style="margin:0;font-size:22px;">Servinformación</h1>
+            <p style="margin:5px 0 0;font-size:13px;opacity:.85;">Partner Premier de Google</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:30px;color:#333333;line-height:1.8;font-size:15px;">
+            <p>Hola, buenos días.</p>
+            <p>Mi nombre es <strong>{nombre_emisor}</strong> y formo parte de
+               <strong>Servinformación</strong>, partner premier de Google.</p>
+            <p>Me contacto con el señor(a) <strong>{nombre_contacto}</strong>,
+               <strong>{cargo_contacto}</strong> de la empresa
+               <strong>{empresa}</strong>.</p>
+            <p>Queremos compartir con usted algunas soluciones de
+               <strong>transformación digital</strong> que pueden generar un gran
+               impacto en su empresa y queremos verificar sus datos de contacto
+               para que uno de nuestros especialistas se ponga en contacto con
+               usted y le cuente detalladamente cómo podemos apoyar en:</p>
+            <ul style="padding-left:20px;">
+              <li>Optimización de procesos</li>
+              <li>Mejora en la toma de decisiones</li>
+              <li>Potenciar su crecimiento mediante herramientas tecnológicas avanzadas</li>
+            </ul>
+            <p>Quedamos atentos a su respuesta.</p>
+            <p style="margin-top:25px;">Cordialmente,<br>
+               <strong>{nombre_emisor}</strong><br>
+               Servinformación — Partner Premier de Google</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color:#ecf0f1;padding:20px;text-align:center;
+                      color:#888888;font-size:12px;">
+            <p style="margin:0;">&copy; 2026 Servinformación. Todos los derechos reservados.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+
+def _gmail_refresh(refresh_token: str) -> str | None:
+    """Renueva el access_token usando el refresh_token. Devuelve el nuevo token o None."""
+    r = requests.post(GMAIL_TOKEN_REFRESH_URL, data={
+        "client_id":     GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type":    "refresh_token",
+    })
+    return r.json().get("access_token") if r.status_code == 200 else None
+
+
+@app.route("/api/send_email", methods=["POST"])
+@login_required
+def send_email():
+    import base64
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    data = request.get_json(force=True)
+    destinatario   = (data.get("destinatario") or "").strip()
+    nombre_contacto = (data.get("nombre_contacto") or "").strip()
+    cargo_contacto  = (data.get("cargo_contacto") or "").strip()
+    empresa         = (data.get("empresa") or "").strip()
+
+    if not destinatario:
+        return jsonify({"error": "Destinatario requerido"}), 400
+
+    user   = flask_session["user"]
+    nombre_emisor = user.get("name") or user.get("email", "")
+
+    # Obtener token de Gmail desde la sesión
+    gmail_token = flask_session.get("gmail_token", {})
+    access_token = gmail_token.get("access_token")
+    refresh_token = gmail_token.get("refresh_token")
+
+    if not access_token:
+        return jsonify({"error": "Sin autorización de Gmail. Cierra sesión y vuelve a entrar."}), 401
+
+    # Construir el mensaje
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Soluciones de Transformación Digital — Servinformación"
+    msg["To"] = destinatario
+    html = PLANTILLA_EMAIL.format(
+        nombre_emisor=nombre_emisor,
+        nombre_contacto=nombre_contacto or "contacto",
+        cargo_contacto=cargo_contacto or "",
+        empresa=empresa or "",
+    )
+    msg.attach(MIMEText(html, "html"))
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
+    def _send(token):
+        return requests.post(
+            GMAIL_SEND_URL,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"raw": raw},
+        )
+
+    resp = _send(access_token)
+
+    # Si expiró el token, intenta refrescar
+    if resp.status_code == 401 and refresh_token:
+        new_token = _gmail_refresh(refresh_token)
+        if new_token:
+            flask_session["gmail_token"]["access_token"] = new_token
+            flask_session.modified = True
+            resp = _send(new_token)
+
+    if resp.status_code in (200, 204):
+        return jsonify({"ok": True})
+    return jsonify({"error": f"Gmail error {resp.status_code}: {resp.text[:200]}"}), 502
 
 
 # ================================================================
