@@ -89,7 +89,7 @@ CONNECTORS = [
         "color": "#1f6feb",
         "required_files": ["empresas_file", "cargos_file"],
         "needs_countries": True,
-        "output_filename": "consolidado_cargo_ok.csv",
+        "output_filename": "Contactos_ServiLeads.csv",
     },
 ]
 
@@ -254,7 +254,7 @@ def _get_csv_header(path: str) -> str:
 # GEMINI AI
 # ================================================================
 _GEMINI_SYSTEM = """\
-Eres ServiLeads AI, asistente de extracción de contactos B2B.
+Eres ServiLeads AI, asistente de extracción de contactos.
 
 REGLA CRÍTICA: Responde ÚNICAMENTE con un objeto JSON. Sin texto extra antes ni después.
 Formato obligatorio:
@@ -671,7 +671,7 @@ def _mid_flow_note(conv: "ConvState") -> list:
 def resp_greeting() -> list:
     return [_text(
         "¡Hola! 👋 Bienvenido a **ServiLeads AI**.\n\n"
-        "Soy tu asistente para extracción de contactos B2B. Puedo:\n\n"
+        "Soy tu asistente para extracción de contactos. Puedo:\n\n"
         "• 🚀 **Extraer contactos** — Apollo + Lusha en cascada, consolidado y validado con IA\n"
         "• 📊 Mostrarte los **datos del mapa** y filtrar por país o empresa\n"
         "• ⬇️ **Descargar** registros por país o empresa\n\n"
@@ -771,7 +771,7 @@ def resp_describe(text: str, conv: "ConvState") -> list:
         "• CSV de empresas (una por fila)\n"
         "• CSV de cargos (uno por fila)\n"
         "• Selección de países\n\n"
-        "**Obtienes:** `consolidado_cargo_ok.csv` — contactos validados con nombre, cargo, correo y teléfono."
+        "**Obtienes:** `Contactos_ServiLeads.csv` — contactos validados con nombre, cargo, correo y teléfono."
     )
     return [_text(desc)] + _mid_flow_note(conv)
 
@@ -1128,7 +1128,7 @@ def _validar_cargos_gemini(output_folder: str, cargos_list: list, stop_event, lo
     log(f"\n{'='*60}")
     log("🤖 Validando cargos con Gemini...")
     cons = os.path.join(output_folder, "consolidado_depuracion.csv")
-    out  = os.path.join(output_folder, "consolidado_cargo_ok.csv")
+    out  = os.path.join(output_folder, "Contactos_ServiLeads.csv")
     if not os.path.isfile(cons):
         log("⚠️ No se encontró consolidado_depuracion.csv, omitiendo validación.")
         return
@@ -1176,9 +1176,9 @@ def _validar_cargos_gemini(output_folder: str, cargos_list: list, stop_event, lo
         with open(out, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=fieldnames)
             w.writeheader(); w.writerows(validos)
-        log(f"   📁 consolidado_cargo_ok.csv → {len(validos)} contactos viables de {len(registros)}")
+        log(f"   📁 Contactos_ServiLeads.csv → {len(validos)} contactos viables de {len(registros)}")
     except Exception as e:
-        log(f"❌ Error escribiendo consolidado_cargo_ok.csv: {e}")
+        log(f"❌ Error escribiendo Contactos_ServiLeads.csv: {e}")
 
 
 # ================================================================
@@ -1241,7 +1241,7 @@ def _run_job(job_id: str, process_type: str, data: dict):
 
             log(f"\n{'='*60}")
             log("🏁 BÚSQUEDA COMPLETADA")
-            log(f"   📁 consolidado_cargo_ok.csv → resultado final validado")
+            log(f"   📁 Contactos_ServiLeads.csv → resultado final validado")
             log(f"{'='*60}\n")
 
         else:
