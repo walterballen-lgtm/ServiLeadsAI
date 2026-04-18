@@ -22,6 +22,11 @@ from flask import (
 )
 
 import apollo_script, lusha_script, apollo_org, lusha_org
+try:
+    import google.generativeai as genai
+    _GENAI_OK = True
+except ImportError:
+    _GENAI_OK = False
 
 try:
     import shapefile as pyshp
@@ -78,56 +83,14 @@ def login_required(f):
 # ================================================================
 CONNECTORS = [
     {
-        "id": "APOLLO_CONTACT",
-        "label": "Apollo — Contactos",
-        "emoji": "🔍",
-        "color": "#867903",
-        "required_api": "apollo_api",
+        "id": "BUSQUEDA_CONTACTOS",
+        "label": "Búsqueda de Contactos",
+        "emoji": "🚀",
+        "color": "#1f6feb",
         "required_files": ["empresas_file", "cargos_file"],
         "needs_countries": True,
-        "output_filename": "resultados_apollo.csv",
+        "output_filename": "consolidado_cargo_ok.csv",
     },
-    {
-        "id": "APOLLO_ORG",
-        "label": "Apollo — Organizaciones",
-        "emoji": "🏢",
-        "color": "#867903",
-        "required_api": "apollo_api",
-        "required_files": ["id_org_file"],
-        "needs_countries": False,
-        "output_filename": "apollo_organizations_output.csv",
-    },
-    {
-        "id": "LUSHA_CONTACT",
-        "label": "Lusha — Contactos",
-        "emoji": "🔍",
-        "color": "#53045F",
-        "required_api": "lusha_api",
-        "required_files": ["empresas_file", "cargos_file"],
-        "needs_countries": True,
-        "output_filename": "resultados_lusha.csv",
-    },
-    {
-        "id": "LUSHA_ORG",
-        "label": "Lusha — Organizaciones",
-        "emoji": "🏢",
-        "color": "#53045F",
-        "required_api": "lusha_api",
-        "required_files": ["id_org_file"],
-        "needs_countries": False,
-        "output_filename": "lusha_organizations_output.csv",
-    },
-    # --- Ejemplo: nuevo conector ---
-    # {
-    #     "id": "SIGNALHIRE_CONTACT",
-    #     "label": "SignalHire — Contactos",
-    #     "emoji": "📡",
-    #     "color": "#083588",
-    #     "required_api": "signalhire_api",
-    #     "required_files": ["empresas_file", "cargos_file"],
-    #     "needs_countries": True,
-    #     "output_filename": "resultados_signalhire.csv",
-    # },
 ]
 
 PAISES_MAPEO = {
@@ -217,43 +180,24 @@ jobs: dict = {}            # job_id → job data
 class ConvState:
     """Guarda el progreso de la conversación de un usuario."""
 
-    # Secuencia de pasos por tipo de proceso
     STEP_MAP = {
-        "APOLLO_CONTACT": ["ask_empresas", "ask_cargos", "ask_countries", "confirm"],
-        "APOLLO_ORG":     ["ask_id_org", "confirm"],
-        "LUSHA_CONTACT":  ["ask_empresas", "ask_cargos", "ask_countries", "confirm"],
-        "LUSHA_ORG":      ["ask_id_org", "confirm"],
-        # Agrega nuevos procesos aquí
+        "BUSQUEDA_CONTACTOS": ["ask_empresas", "ask_cargos", "ask_countries", "confirm"],
     }
 
     def __init__(self, sid: str):
         self.sid = sid
         self.step = "welcome"
         self.process_type: str = None
-        self.apollo_api: str = None
-        self.lusha_api: str = None
         self.paises: list = []
         self.paises_names: list = []
         self.empresas_path: str = None
         self.cargos_path: str = None
-        self.id_org_path: str = None
         self.empresas_count: int = 0
         self.cargos_count: int = 0
-        self.id_org_count: int = 0
         self.job_id: str = None
         self.upload_dir = tempfile.mkdtemp(prefix=f"conv_{sid[:8]}_")
-        self.pending_confirm_file: dict = None  # {field, path, header, count}
+        self.pending_confirm_file: dict = None
         self.gemini_history: list = []
-
-    @property
-    def api_name(self) -> str:
-        if not self.process_type:
-            return ""
-        return "Apollo" if "APOLLO" in self.process_type else "Lusha"
-
-    @property
-    def api_key(self) -> str:
-        return self.apollo_api if "APOLLO" in (self.process_type or "") else self.lusha_api
 
     def advance(self):
         steps = self.STEP_MAP.get(self.process_type, [])
@@ -263,21 +207,17 @@ class ConvState:
                 self.step = steps[idx + 1]
 
     def summary_items(self) -> list:
-        items = [
-            ("Tipo de búsqueda", self.process_type.replace("_", " ").title() if self.process_type else "—"),
-            ("API", f"{self.api_name} ✓ configurada"),
-        ]
+        items = [("Proceso", "🚀 Búsqueda de Contactos (Apollo → Lusha → Consolidado)")]
         if self.empresas_path:
             items.append(("Empresas", f"{self.empresas_count} registros"))
         if self.cargos_path:
             items.append(("Cargos", f"{self.cargos_count} registros"))
-        if self.id_org_path:
-            items.append(("Id Organizaciones", f"{self.id_org_count} IDs"))
         if self.paises_names:
             shown = self.paises_names[:4]
             extra = len(self.paises_names) - 4
             label = ", ".join(shown) + (f" +{extra} más" if extra > 0 else "")
             items.append(("Países", label))
+        items.append(("APIs", "Apollo + Lusha (variables de entorno)"))
         return items
 
 
@@ -321,7 +261,7 @@ Formato obligatorio:
 {{"message": "<texto markdown>", "action": "<accion_o_null>", "params": {{}}}}
 
 ACCIONES DISPONIBLES:
-- "start_process" → Iniciar extracción. params: {{"process_type": "APOLLO_CONTACT"|"APOLLO_ORG"|"LUSHA_CONTACT"|"LUSHA_ORG"}}
+- "start_process" → Iniciar extracción. params: {{"process_type": "BUSQUEDA_CONTACTOS"}}
 - "download_data" → Descargar CSV. params: {{"pais": "<pais_o_null>", "empresa": "<nombre_o_null>"}}
 - "show_summary"  → Resumen general del mapa. params: {{}}
 - "filter_map"    → Filtrar mapa Y mostrar contactos en chat. params: {{"pais": "<pais_o_null>", "empresa": "<nombre_o_null>"}}
@@ -329,16 +269,13 @@ ACCIONES DISPONIBLES:
 - null            → Solo responder con texto
 
 CUÁNDO USAR CADA ACCIÓN:
-- "filter_map": el usuario pregunta por contactos DE un país o empresa ("qué tengo en Colombia", "contactos de Alpina"). Filtra el mapa visualmente Y muestra resumen en chat.
-- "search_map": el usuario busca un registro específico ("existe Manuel", "gerente de Alpina", "busca la empresa RAMO"). Usa empresa_filter para limitar a una empresa concreta.
+- "filter_map": el usuario pregunta por contactos DE un país o empresa ("qué tengo en Colombia", "contactos de Alpina").
+- "search_map": el usuario busca un registro específico ("existe Manuel", "gerente de Alpina", "busca la empresa RAMO").
 - "download_data": el usuario quiere descargar el CSV.
-- "start_process": el usuario quiere extraer contactos nuevos con Apollo/Lusha.
+- "start_process": el usuario quiere extraer contactos nuevos.
 
-PROCESOS DE EXTRACCIÓN:
-- APOLLO_CONTACT  → apollo_script.py  — Busca personas por cargo usando Apollo.io. Requiere: CSV empresas, CSV cargos, países.
-- APOLLO_ORG      → apollo_org.py     — Enriquece organizaciones por ID Apollo. Requiere: CSV de IDs.
-- LUSHA_CONTACT   → lusha_script.py   — Igual que APOLLO_CONTACT con API Lusha (mejor cobertura LATAM).
-- LUSHA_ORG       → lusha_org.py      — Enriquece organizaciones con Lusha. Requiere: CSV de IDs.
+PROCESO DE EXTRACCIÓN:
+- BUSQUEDA_CONTACTOS → Proceso unificado: busca en Apollo primero, luego en Lusha para empresas sin resultados, consolida todo y valida cargos con IA. Requiere: CSV empresas, CSV cargos, países.
 
 BASE DE DATOS DEL MAPA:
 {map_summary}
@@ -735,25 +672,25 @@ def resp_greeting() -> list:
     return [_text(
         "¡Hola! 👋 Bienvenido a **ServiLeads AI**.\n\n"
         "Soy tu asistente para extracción de contactos B2B. Puedo:\n\n"
-        "• 🔍 Extraer contactos de empresas con **Apollo** o **Lusha**\n"
-        "• 📊 Mostrarte los **datos del mapa** (Colombia, Perú, Uruguay)\n"
-        "• ⬇️ **Descargar** registros por país o empresa\n"
-        "• 💬 Explicarte cualquier proceso disponible\n\n"
+        "• 🚀 **Extraer contactos** — Apollo + Lusha en cascada, consolidado y validado con IA\n"
+        "• 📊 Mostrarte los **datos del mapa** y filtrar por país o empresa\n"
+        "• ⬇️ **Descargar** registros por país o empresa\n\n"
         "¿En qué te puedo ayudar hoy?"
     )]
 
 
 def resp_help(conv: "ConvState") -> list:
+    feats = GEOJSON_CACHE.get("features", [])
     msgs = [_text(
         "**¿Qué puede hacer ServiLeads AI?** 🤖\n\n"
-        "**Extracción de datos** — 4 procesos disponibles:\n"
-        "• 🔍 **Apollo Contactos** — busca personas en empresas por cargo (CSV empresas + CSV cargos + países)\n"
-        "• 🏢 **Apollo Organizaciones** — enriquece organizaciones por ID en Apollo\n"
-        "• 👤 **Lusha Contactos** — igual que Apollo Contactos pero con API de Lusha\n"
-        "• 🏛️ **Lusha Organizaciones** — enriquece organizaciones con Lusha\n\n"
-        "**Datos del mapa:**\n"
-        "Tengo **92 registros** cargados de Colombia, Perú y Uruguay que puedes explorar o descargar.\n\n"
-        "Puedes preguntarme: *'qué datos tengo'*, *'descargar Colombia'*, *'describe Apollo'*, o simplemente iniciar una búsqueda."
+        "**🚀 Búsqueda de Contactos (proceso unificado):**\n"
+        "1. Busca en **Apollo** primero para todas tus empresas\n"
+        "2. Las empresas sin resultados van a **Lusha** automáticamente\n"
+        "3. Consolida ambos resultados en un solo archivo\n"
+        "4. Valida los cargos con **IA (Gemini)** para entregarte solo contactos relevantes\n\n"
+        "**Necesitas:** CSV de empresas + CSV de cargos + selección de países\n\n"
+        f"**Datos del mapa:** {len(feats)} registros disponibles para explorar y descargar.\n\n"
+        "Escribe *'quiero buscar contactos'* para iniciar, o *'qué datos tengo'* para explorar el mapa."
     )]
     return msgs + _mid_flow_note(conv)
 
@@ -823,43 +760,20 @@ def resp_download(text: str, conv: "ConvState") -> list:
 
 
 def resp_describe(text: str, conv: "ConvState") -> list:
-    t = text.lower()
-    descs = {
-        "APOLLO_CONTACT": (
-            "🔍 **Apollo — Contactos**\n\n"
-            "Busca personas en empresas según su cargo usando la API de Apollo.io.\n\n"
-            "**Necesitas:** CSV de empresas · CSV de cargos · países destino\n"
-            "**Obtienes:** nombre, cargo, correo, teléfono, LinkedIn por contacto\n\n"
-            "Ideal para campañas de outbound B2B con listados propios."
-        ),
-        "APOLLO_ORG": (
-            "🏢 **Apollo — Organizaciones**\n\n"
-            "Enriquece datos de organizaciones a partir de su ID en Apollo.io.\n\n"
-            "**Necesitas:** CSV con IDs de organizaciones\n"
-            "**Obtienes:** sector, tamaño, web, descripción y más datos de la empresa."
-        ),
-        "LUSHA_CONTACT": (
-            "👤 **Lusha — Contactos**\n\n"
-            "Igual que Apollo Contactos pero usando la API de Lusha. Lusha tiene mayor cobertura en LATAM y Europa.\n\n"
-            "**Necesitas:** CSV de empresas · CSV de cargos · países destino\n"
-            "**Obtienes:** nombre, cargo, correo, teléfono, LinkedIn."
-        ),
-        "LUSHA_ORG": (
-            "🏛️ **Lusha — Organizaciones**\n\n"
-            "Enriquece organizaciones con datos de Lusha.\n\n"
-            "**Necesitas:** CSV con IDs de organización\n"
-            "**Obtienes:** datos completos de la empresa."
-        ),
-    }
-
-    if   "apollo" in t and ("org" in t or "organiz" in t): key = "APOLLO_ORG"
-    elif "apollo" in t:                                      key = "APOLLO_CONTACT"
-    elif "lusha"  in t and ("org" in t or "organiz" in t): key = "LUSHA_ORG"
-    elif "lusha"  in t:                                      key = "LUSHA_CONTACT"
-    else:
-        return [_text("Aquí un resumen de todos los procesos:\n\n" + "\n\n".join(descs.values()))] + _mid_flow_note(conv)
-
-    return [_text(descs[key])] + _mid_flow_note(conv)
+    desc = (
+        "🚀 **Búsqueda de Contactos — Proceso Unificado**\n\n"
+        "Combina Apollo y Lusha en una sola ejecución inteligente:\n\n"
+        "**Fase 1 — Apollo:** busca contactos para todas tus empresas\n"
+        "**Fase 2 — Lusha:** busca automáticamente las empresas que Apollo no encontró\n"
+        "**Fase 3 — Consolidado:** une ambos resultados en un solo CSV\n"
+        "**Fase 4 — Validación IA:** Gemini filtra los contactos según los cargos que buscas\n\n"
+        "**Necesitas:**\n"
+        "• CSV de empresas (una por fila)\n"
+        "• CSV de cargos (uno por fila)\n"
+        "• Selección de países\n\n"
+        "**Obtienes:** `consolidado_cargo_ok.csv` — contactos validados con nombre, cargo, correo y teléfono."
+    )
+    return [_text(desc)] + _mid_flow_note(conv)
 
 
 # ================================================================
@@ -877,10 +791,10 @@ def handle_turn(sid: str, payload: dict) -> list:
     ptype = payload.get("type", "text")
     value = str(payload.get("value", "")).strip()
 
-    # Recarga de página → saludo + menú
+    # Recarga de página → saludo + botón de búsqueda
     if ptype == "init":
         conv.step = "welcome"
-        return resp_greeting() + [_process_menu()]
+        return resp_greeting() + [_replies([{"label": "🚀 Iniciar Búsqueda de Contactos", "value": "BUSQUEDA_CONTACTOS"}])]
 
     # Reinicio explícito
     if ptype == "text" and value.lower() in RESET_WORDS:
@@ -978,7 +892,9 @@ def handle_turn(sid: str, payload: dict) -> list:
             if intent == "download": return [error_msg] + resp_download(value, conv)
             if intent == "describe": return [error_msg] + resp_describe(value, conv)
             if intent == "start" and conv.step == "welcome":
-                return [error_msg, _text("¿Con qué herramienta quieres trabajar?"), _process_menu()]
+                conv.process_type = "BUSQUEDA_CONTACTOS"
+                conv.step = "ask_empresas"
+                return [error_msg, _text("Perfecto, iniciemos la búsqueda 🚀")] + step_messages(conv)
             return [error_msg] + _mid_flow_note(conv)
 
         # Ejecutar acción de Gemini
@@ -987,14 +903,10 @@ def handle_turn(sid: str, payload: dict) -> list:
         msg_txt = gemini.get("message")
 
         if action == "start_process":
-            ptype_req = params.get("process_type", "")
-            if ptype_req in {c["id"] for c in CONNECTORS}:
-                conv.process_type = ptype_req
-                conv.step = conv.STEP_MAP[ptype_req][0]
-                conn = next(c for c in CONNECTORS if c["id"] == ptype_req)
-                msgs = ([_text(msg_txt)] if msg_txt else
-                        [_text(f"Perfecto, vamos con **{conn['label']}** {conn['emoji']}")])
-                return msgs + step_messages(conv)
+            conv.process_type = "BUSQUEDA_CONTACTOS"
+            conv.step = "ask_empresas"
+            msgs = [_text(msg_txt)] if msg_txt else [_text("Perfecto, iniciemos la búsqueda 🚀")]
+            return msgs + step_messages(conv)
 
         if action == "download_data":
             pais_g    = params.get("pais") or ""
@@ -1045,7 +957,9 @@ def handle_turn(sid: str, payload: dict) -> list:
         if intent == "download": return resp_download(value, conv)
         if intent == "describe": return resp_describe(value, conv)
         if intent == "start" and conv.step == "welcome":
-            return [_text("¡Claro! ¿Con qué herramienta quieres trabajar?"), _process_menu()]
+            conv.process_type = "BUSQUEDA_CONTACTOS"
+            conv.step = "ask_empresas"
+            return [_text("¡Claro! Iniciemos la búsqueda 🚀")] + step_messages(conv)
 
     # ---- Pasos del flujo guiado ----
 
@@ -1173,6 +1087,101 @@ def handle_turn(sid: str, payload: dict) -> list:
 
 
 # ================================================================
+# FUNCIONES DE CONSOLIDACIÓN Y VALIDACIÓN
+# ================================================================
+def _generar_consolidado(output_folder: str, log):
+    log(f"\n{'='*60}")
+    log("📋 Generando consolidado...")
+    fields = ['plataforma','empresa_buscada','organization_id','organization_name',
+              'person_id','name','title','country','email','contact_number']
+    out = os.path.join(output_folder, "consolidado_depuracion.csv")
+    apollo_f = os.path.join(output_folder, "resultados_apollo.csv")
+    lusha_f  = os.path.join(output_folder, "resultados_lusha.csv")
+    ta = tl = 0
+    try:
+        with open(out, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
+            w.writeheader()
+            if os.path.isfile(apollo_f):
+                with open(apollo_f, "r", encoding="utf-8") as af:
+                    for row in csv.DictReader(af):
+                        w.writerow({'plataforma':'Apollo','empresa_buscada':row.get('empresa_buscada',''),
+                            'organization_id':row.get('organization_id',''),'organization_name':row.get('organization_name',''),
+                            'person_id':row.get('id',''),'name':row.get('name',''),'title':row.get('title',''),
+                            'country':row.get('country',''),'email':row.get('email',''),'contact_number':row.get('sanitized_number','')})
+                        ta += 1
+            if os.path.isfile(lusha_f):
+                with open(lusha_f, "r", encoding="utf-8") as lf:
+                    for row in csv.DictReader(lf):
+                        w.writerow({'plataforma':'Lusha','empresa_buscada':row.get('empresa_buscada',''),
+                            'organization_id':row.get('companyId',''),'organization_name':row.get('companyName',''),
+                            'person_id':row.get('personId',''),'name':row.get('name',''),'title':row.get('jobTitle',''),
+                            'country':row.get('pais_buscado',''),'email':'','contact_number':row.get('hasMobilePhone','')})
+                        tl += 1
+        log(f"   ✅ {ta} Apollo + {tl} Lusha = {ta+tl} total → consolidado_depuracion.csv")
+    except Exception as e:
+        log(f"❌ Error generando consolidado: {e}")
+
+
+def _validar_cargos_gemini(output_folder: str, cargos_list: list, stop_event, log):
+    import time
+    log(f"\n{'='*60}")
+    log("🤖 Validando cargos con Gemini...")
+    cons = os.path.join(output_folder, "consolidado_depuracion.csv")
+    out  = os.path.join(output_folder, "consolidado_cargo_ok.csv")
+    if not os.path.isfile(cons):
+        log("⚠️ No se encontró consolidado_depuracion.csv, omitiendo validación.")
+        return
+    registros, fieldnames = [], None
+    try:
+        with open(cons, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+            registros = [dict(r) for r in reader]
+    except Exception as e:
+        log(f"❌ Error leyendo consolidado: {e}"); return
+    if not registros:
+        log("⚠️ Consolidado vacío."); return
+    if not _GENAI_OK or not GEMINI_API_KEY:
+        log("⚠️ Gemini no disponible — copiando consolidado sin filtrar.")
+        import shutil; shutil.copy(cons, out); return
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+    except Exception as e:
+        log(f"❌ Error configurando Gemini: {e}"); return
+    cargos_txt = ", ".join(cargos_list)
+    validos, batch_size = [], 20
+    log(f"   📊 {len(registros)} contactos × {len(cargos_list)} cargos de referencia")
+    for i in range(0, len(registros), batch_size):
+        if stop_event.is_set(): break
+        batch = registros[i:i+batch_size]
+        titulos = "\n".join(f"{j+1}. {r.get('title','N/A')}" for j,r in enumerate(batch))
+        prompt = (f"Cargos de referencia: {cargos_txt}\n\nValida estos títulos:\n{titulos}\n\n"
+                  f"Responde SOLO los números VÁLIDOS separados por comas, o NINGUNO.")
+        try:
+            resp = model.generate_content(prompt).text.strip()
+            if resp.upper() != "NINGUNO":
+                for num in resp.replace(" ","").split(","):
+                    try:
+                        idx = int(num)
+                        if 1 <= idx <= len(batch): validos.append(batch[idx-1])
+                    except ValueError: pass
+            log(f"   ✅ Lote {i//batch_size+1}: {len([x for x in resp.split(',') if x.strip().isdigit()])}/{len(batch)} válidos")
+        except Exception as e:
+            log(f"   ⚠️ Error lote {i//batch_size+1}: {e} — incluyendo lote completo")
+            validos.extend(batch)
+        time.sleep(1)
+    try:
+        with open(out, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames)
+            w.writeheader(); w.writerows(validos)
+        log(f"   📁 consolidado_cargo_ok.csv → {len(validos)} contactos viables de {len(registros)}")
+    except Exception as e:
+        log(f"❌ Error escribiendo consolidado_cargo_ok.csv: {e}")
+
+
+# ================================================================
 # EJECUTOR DE JOBS
 # ================================================================
 def _run_job(job_id: str, process_type: str, data: dict):
@@ -1185,29 +1194,55 @@ def _run_job(job_id: str, process_type: str, data: dict):
         log_q.put(str(msg))
 
     try:
-        if process_type == "APOLLO_CONTACT":
+        if process_type == "BUSQUEDA_CONTACTOS":
             empresas = leer_csv_primera_columna(data["empresas_path"])
             cargos   = leer_csv_primera_columna(data["cargos_path"])
             if not empresas or not cargos:
                 log("❌ ERROR: Archivos de empresas o cargos vacíos.")
                 return
-            apollo_script.run(data["apollo_api"], empresas, cargos, data["paises"], output_dir, log, stop_event)
 
-        elif process_type == "APOLLO_ORG":
-            apollo_org.run(data["apollo_api"], data["id_org_path"], output_dir, log, stop_event)
+            # FASE 1: Apollo
+            log(f"\n{'='*60}")
+            log("📡 FASE 1/2: Buscando contactos en Apollo...")
+            log(f"{'='*60}")
+            apollo_script.run(APOLLO_API_KEY, empresas, cargos, data["paises"], output_dir, log, stop_event)
+            if stop_event.is_set():
+                log("🛑 Cancelado durante Apollo."); return
 
-        elif process_type == "LUSHA_CONTACT":
-            empresas = leer_csv_primera_columna(data["empresas_path"])
-            cargos   = leer_csv_primera_columna(data["cargos_path"])
-            if not empresas or not cargos:
-                log("❌ ERROR: Archivos de empresas o cargos vacíos.")
-                return
-            lusha_script.run(data["lusha_api"], empresas, cargos, data["paises"], output_dir, log, stop_event)
+            # Detectar empresas sin resultados en Apollo
+            apollo_out = os.path.join(output_dir, "resultados_apollo.csv")
+            empresas_con = set()
+            if os.path.isfile(apollo_out):
+                with open(apollo_out, "r", encoding="utf-8") as f:
+                    for row in csv.DictReader(f):
+                        eb = row.get("empresa_buscada", "").strip()
+                        if eb: empresas_con.add(eb.lower())
+            empresas_sin = [e for e in empresas if e.strip().lower() not in empresas_con]
+            log(f"   ✅ Con contactos Apollo: {len(empresas_con)} | ❌ Sin contactos: {len(empresas_sin)}")
 
-        elif process_type == "LUSHA_ORG":
-            lusha_org.run(data["lusha_api"], data["id_org_path"], output_dir, log, stop_event)
+            # FASE 2: Lusha solo para empresas sin resultados Apollo
+            if empresas_sin and not stop_event.is_set():
+                log(f"\n{'='*60}")
+                log(f"📡 FASE 2/2: Buscando {len(empresas_sin)} empresa(s) en Lusha...")
+                log(f"{'='*60}")
+                lusha_script.run(LUSHA_API_KEY, empresas_sin, cargos, data["paises"], output_dir, log, stop_event)
+            else:
+                log("🎉 Todas las empresas tuvieron resultados en Apollo. Lusha no necesario.")
 
-        # --- Agrega nuevos elif aquí ---
+            if stop_event.is_set():
+                log("🛑 Cancelado durante Lusha."); return
+
+            # FASE 3: Consolidado
+            _generar_consolidado(output_dir, log)
+
+            # FASE 4: Validación de cargos con Gemini
+            if not stop_event.is_set():
+                _validar_cargos_gemini(output_dir, cargos, stop_event, log)
+
+            log(f"\n{'='*60}")
+            log("🏁 BÚSQUEDA COMPLETADA")
+            log(f"   📁 consolidado_cargo_ok.csv → resultado final validado")
+            log(f"{'='*60}\n")
 
         else:
             log(f"⚠️ Proceso desconocido: {process_type}")
@@ -1225,11 +1260,8 @@ def _launch_job(conv: ConvState) -> dict:
     connector = next((c for c in CONNECTORS if c["id"] == conv.process_type), None)
     if not connector:
         return {"error": "Tipo de proceso no reconocido"}
-
-    needed_key = APOLLO_API_KEY if "APOLLO" in conv.process_type else LUSHA_API_KEY
-    if not needed_key:
-        api_name = "APOLLO_API_KEY" if "APOLLO" in conv.process_type else "LUSHA_API_KEY"
-        return {"error": f"Variable de entorno {api_name} no configurada en el servidor"}
+    if not APOLLO_API_KEY and not LUSHA_API_KEY:
+        return {"error": "APOLLO_API_KEY y LUSHA_API_KEY no configuradas en el servidor"}
 
     job_id = str(uuid.uuid4())
     output_dir = os.path.join(conv.upload_dir, "output")
@@ -1247,12 +1279,9 @@ def _launch_job(conv: ConvState) -> dict:
     }
 
     data = {
-        "apollo_api":   APOLLO_API_KEY,
-        "lusha_api":    LUSHA_API_KEY,
-        "paises":       conv.paises,
+        "paises":        conv.paises,
         "empresas_path": conv.empresas_path,
         "cargos_path":   conv.cargos_path,
-        "id_org_path":   conv.id_org_path,
     }
 
     t = threading.Thread(target=_run_job, args=(job_id, conv.process_type, data), daemon=True)
