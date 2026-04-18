@@ -1422,43 +1422,33 @@ function renderMessage(msg) {
 
     case 'stream_start': {
       const wrap = document.createElement('div');
-      const cons = document.createElement('div'); cons.className = 'console-bub';
-      const stat = document.createElement('div'); stat.className = 'console-status';
-      stat.innerHTML = '<span class="spin">⚙</span> Ejecutando proceso...';
-      wrap.appendChild(cons); wrap.appendChild(stat);
+      const stat = document.createElement('div'); stat.className = 'bubble';
+      stat.innerHTML = renderMD('⚙️ Procesando...');
+      wrap.appendChild(stat);
       currentJobId = msg.job_id;
       if (eventSource) eventSource.close();
       eventSource = new EventSource(`/api/stream/${msg.job_id}`);
       eventSource.onmessage = (e) => {
         if (e.data === '__DONE__') {
           eventSource.close(); eventSource = null;
-          stat.innerHTML = '✅ Proceso finalizado.';
           const dg = document.createElement('div'); dg.className = 'msg-group bot';
           const note = document.createElement('div'); note.className = 'bubble';
-          note.innerHTML = renderMD('✅ **¡Búsqueda completada!**');
+          note.innerHTML = renderMD('✅ **Proceso finalizado.** Puedes descargar los resultados.');
           const dl = document.createElement('a'); dl.className = 'dl-btn';
           dl.href = `/api/download/${currentJobId}`; dl.download = '';
           dl.textContent = '⬇ Descargar CSV';
           dg.appendChild(note); dg.appendChild(dl);
           document.getElementById('chat-messages').appendChild(dg); scrollChat();
-        } else if (e.data !== '__PING__') {
-          const raw = e.data.replace(/\\n/g, '\n');
-          raw.split('\n').forEach(line => {
-            if (!line.trim()) return;
-            const d = document.createElement('div'); d.className = 'cl';
-            if (line.includes('❌') || line.toUpperCase().includes('ERROR')) d.classList.add('err');
-            else if (line.includes('⚠'))  d.classList.add('warn');
-            else if (line.startsWith('===') || line.startsWith('---')) d.classList.add('sep');
-            else if (line.startsWith('ℹ') || line.startsWith('📊')) d.classList.add('info');
-            d.textContent = line; cons.appendChild(d);
-          });
-          cons.scrollTop = cons.scrollHeight; scrollChat();
         }
       };
       eventSource.onerror = () => {
-        if (!eventSource) return; // __DONE__ ya cerró la conexión limpiamente
+        if (!eventSource) return;
         eventSource.close(); eventSource = null;
-        stat.innerHTML = '❌ Se perdió la conexión con el servidor. Escribe <em>reiniciar</em> para intentar de nuevo.';
+        const dg = document.createElement('div'); dg.className = 'msg-group bot';
+        const note = document.createElement('div'); note.className = 'bubble';
+        note.innerHTML = renderMD('❌ Se perdió la conexión con el servidor. Escribe **reiniciar** para intentar de nuevo.');
+        dg.appendChild(note);
+        document.getElementById('chat-messages').appendChild(dg); scrollChat();
       };
       return wrap;
     }

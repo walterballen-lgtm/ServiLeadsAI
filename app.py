@@ -1061,7 +1061,7 @@ def handle_turn(sid: str, payload: dict) -> list:
                 return [_text(f"❌ {result['error']}")]
             conv.job_id = result["job_id"]
             conv.step   = "running"
-            return [_text("🚀 ¡Búsqueda iniciada! Los logs aparecen en tiempo real..."), _stream(conv.job_id)]
+            return [_text("🚀 Búsqueda iniciada..."), _stream(conv.job_id)]
         if ptype == "action" and value == "RESTART":
             conversations[sid] = ConvState(sid)
             return [_text("↩️ Búsqueda cancelada.")] + resp_greeting()
