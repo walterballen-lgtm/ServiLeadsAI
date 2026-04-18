@@ -409,6 +409,7 @@ def _norm(s: str) -> str:
 
 def resp_search_map(query: str, field: str = "nombre", empresa_filter: str = "", pais: str = "") -> list:
     feats = GEOJSON_CACHE.get("features", [])
+    query = query or ""
     q = _norm(query.strip())
     if field not in {"nombre", "empresa", "cargo", "correo", "url", "telefono"}:
         field = "nombre"
@@ -504,12 +505,20 @@ def resp_filter_map(pais: str = "", empresa: str = "", extra_msg: str = "") -> l
     by_cargo   = Counter(f["properties"].get("cargo",   "?") for f in filtered)
 
     lines = [f"📊 **{len(filtered)} contactos** en {scope}:\n"]
-    lines.append("**Por empresa:**")
-    for emp, cnt in sorted(by_empresa.items(), key=lambda x: -x[1])[:5]:
-        lines.append(f"  🏢 {emp}: {cnt}")
-    top_cargos = [c for c, _ in sorted(by_cargo.items(), key=lambda x: -x[1]) if c and c != "?" ][:4]
-    if top_cargos:
-        lines.append(f"\n**Cargos frecuentes:** {', '.join(top_cargos)}")
+    shown = filtered[:30]
+    for f in shown:
+        p = f["properties"]
+        nombre = p.get("nombre", "—")
+        cargo  = p.get("cargo",  "")
+        emp    = p.get("empresa","")
+        correo = p.get("correo", "")
+        linea  = f"• **{nombre}**"
+        if cargo:  linea += f" — {cargo}"
+        if emp:    linea += f" | {emp}"
+        if correo: linea += f" | {correo}"
+        lines.append(linea)
+    if len(filtered) > 30:
+        lines.append(f"\n_...y {len(filtered)-30} más. Descarga el CSV para verlos todos._")
 
     qs, lp = [], []
     if pais:    qs.append(f"pais={pais}");       lp.append(pais)
@@ -1446,8 +1455,8 @@ def download_map():
     feats   = GEOJSON_CACHE.get("features", [])
     filtered = [
         f for f in feats
-        if (not pais    or f["properties"].get("pais")    == pais)
-        and (not empresa or f["properties"].get("empresa") == empresa)
+        if (not pais    or _norm(pais)    in _norm(f["properties"].get("pais",    "")))
+        and (not empresa or _norm(empresa) in _norm(f["properties"].get("empresa", "")))
     ]
     if not filtered:
         return jsonify({"error": "No hay registros para esos filtros"}), 404
