@@ -294,6 +294,12 @@
           <img class="company-logo" src="/static/logos/proaia_orig.png" alt="ProaIA"/>
         </label>
 
+        <label class="company-label" style="grid-column: 1 / -1;">
+          <input type="radio" name="company" value="Geodatamaps"
+                 {% if request.form.get('company') == 'Geodatamaps' %}checked{% endif %}>
+          <img class="company-logo" src="/static/logos/geodatamaps.png" alt="Geodatamaps"/>
+        </label>
+
       </div>
     </div>
 

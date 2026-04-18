@@ -58,7 +58,7 @@ GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
 
-ALLOWED_COMPANIES = ["SERVINFORMACION", "Saving the amazon", "CNID", "ProaIA"]
+ALLOWED_COMPANIES = ["SERVINFORMACION", "Saving the amazon", "CNID", "ProaIA", "Geodatamaps"]
 
 
 def login_required(f):
