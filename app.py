@@ -671,8 +671,8 @@ def _mid_flow_note(conv: "ConvState") -> list:
 def resp_greeting() -> list:
     return [_text(
         "¡Hola! 👋 Bienvenido a **ServiLeads AI**.\n\n"
-        "Soy tu asistente para extracción de contactos. Puedo:\n\n"
-        "• 🚀 **Extraer contactos** — Apollo + Lusha en cascada, consolidado y validado con IA\n"
+        "Soy **Junno** tu asistente para extracción de contactos. Puedo:\n\n"
+        "• 🚀 **Extraer contactos** — Multiplataforma en cascada, consolidado y validado con IA\n"
         "• 📊 Mostrarte los **datos del mapa** y filtrar por país o empresa\n"
         "• ⬇️ **Descargar** registros por país o empresa\n\n"
         "¿En qué te puedo ayudar hoy?"
