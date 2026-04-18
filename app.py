@@ -1144,6 +1144,10 @@ def _validar_cargos_gemini(output_folder: str, cargos_list: list, stop_event, lo
         log("⚠️ Consolidado vacío."); return
     if not _GENAI_OK or not GEMINI_API_KEY:
         log("⚠️ Gemini no disponible — copiando consolidado sin filtrar.")
+        if not _GENAI_OK:
+            log("   ↳ Causa: librería google-generativeai no instalada.")
+        if not GEMINI_API_KEY:
+            log("   ↳ Causa: GEMINI_API_KEY no configurada en variables de entorno.")
         import shutil; shutil.copy(cons, out); return
     try:
         genai.configure(api_key=GEMINI_API_KEY)
